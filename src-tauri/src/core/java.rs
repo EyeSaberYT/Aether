@@ -79,20 +79,31 @@ pub fn component_for_major(required: u32) -> &'static str {
         0..=8 => "jre-legacy",
         9..=16 => "java-runtime-alpha",
         17..=20 => "java-runtime-gamma",
-        _ => "java-runtime-delta",
+        21..=24 => "java-runtime-delta",
+        // Minecraft 26.x declares `java-runtime-epsilon` (Java 25) and its
+        // version.json passes `--sun-misc-unsafe-memory-access`, which only
+        // JDK 24+ accepts — anything older dies before the game starts.
+        _ => "java-runtime-epsilon",
     }
 }
 
 /// Read the major Java version requested by a `version.json`.
+///
+/// `javaVersion.majorVersion` is authoritative, so the larger of it and the
+/// component's known version wins. The component table does double duty: it
+/// serves manifests that predate `majorVersion`, and it translates component
+/// names to versions when scanning Mojang's runtime manifest (which publishes
+/// no version numbers at all).
 pub fn required_major(component: &str, fallback: u32) -> u32 {
-    match component {
+    let known = match component {
         "jre-legacy" => 8,
         "java-runtime-alpha" => 16,
-        "java-runtime-beta" => 17,
-        "java-runtime-gamma" => 17,
+        "java-runtime-beta" | "java-runtime-gamma" | "java-runtime-gamma-snapshot" => 17,
         "java-runtime-delta" => 21,
-        _ => fallback,
-    }
+        "java-runtime-epsilon" => 25,
+        _ => 0,
+    };
+    known.max(fallback)
 }
 
 // ---------------------------------------------------------------------------
@@ -385,27 +396,32 @@ pub async fn install(
         .get(platform)
         .ok_or_else(|| AetherError::msg(format!("No Java runtimes available for {platform}")))?;
 
-    // Prefer the component matching the required version, else the newest
-    // available component that is at least as new.
+    // Prefer the component mapped to the required version, but never accept one
+    // that is actually too old — a too-old JDK rejects Minecraft's JVM flags and
+    // dies with a cryptic "Unrecognized option" before the game starts.
     let preferred = component_for_major(required);
-    let component = if platform_components.contains_key(preferred) {
+    let preferred_ok = platform_components.contains_key(preferred)
+        && required_major(preferred, 0) >= required;
+
+    let component = if preferred_ok {
         preferred
     } else {
         let mut names: Vec<(&str, u32)> = platform_components
             .keys()
-            .map(|name| {
-                let major = required_major(name, 0);
-                (name.as_str(), major)
-            })
+            .map(|name| (name.as_str(), required_major(name, 0)))
             .collect();
         names.sort_by_key(|(_, major)| *major);
         names
             .into_iter()
             .rev()
             .find(|(_, major)| *major >= required)
-            .or_else(|| platform_components.keys().next().map(|n| (n.as_str(), 0)))
             .map(|(name, _)| name)
-            .ok_or_else(|| AetherError::msg("Mojang published no Java runtimes."))?
+            .ok_or_else(|| {
+                AetherError::msg(format!(
+                    "Mojang doesn't publish a Java {required} runtime for this platform yet. \
+                     Install a JDK {required} yourself and point Aether at it in Settings."
+                ))
+            })?
     };
 
     let release = platform_components
@@ -426,7 +442,12 @@ pub async fn install(
         let target = dest_root.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
         match file.file_type.as_str() {
             "directory" => {
-                std::fs::create_dir_all(&target)?;
+                std::fs::create_dir_all(&target).map_err(|e| {
+                    AetherError::msg(format!(
+                        "Couldn't create the folder {}: {e}",
+                        target.display()
+                    ))
+                })?;
             }
             "file" => {
                 if let Some(raw) = file.downloads.as_ref().and_then(|d| d.raw.as_ref()) {
@@ -437,7 +458,7 @@ pub async fn install(
                         DownloadSpec::new(raw.url.clone(), &target)
                             .with_sha1(raw.sha1.clone())
                             .with_size(raw.size)
-                            .with_label(component.to_string()),
+                            .with_label(relative.clone()),
                     );
                 }
             }
@@ -452,7 +473,8 @@ pub async fn install(
         "java",
         sink.clone(),
     )
-    .await?;
+    .await
+    .map_err(|e| AetherError::msg(format!("While installing {component}: {e}")))?;
 
     // Ensure the launcher binary is executable on unix.
     let bin = dest_root.join("bin").join(java_binary_name());
