@@ -352,7 +352,9 @@ struct RuntimeFile {
     file_type: String,
     #[serde(default)]
     downloads: Option<RuntimeDownloads>,
+    /// Present in Mojang's manifest; we extract every file regardless.
     #[serde(default)]
+    #[allow(dead_code)]
     executable: bool,
     #[serde(default)]
     target: Option<String>,
