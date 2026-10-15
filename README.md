@@ -172,17 +172,28 @@ npm run tauri:build    # build a distributable installer
 
 ### Enabling Microsoft sign-in
 
-Microsoft sign-in ships disabled because it needs an Azure application ID:
+Microsoft sign-in ships with a built-in Azure "public client" application id, so
+offline profiles work immediately and online sign-in works without extra setup
+for accounts in the bundled registration's directory.
+
+The bundled registration is **single-tenant** and the code targets that tenant,
+so only work or school accounts in that directory can sign in. To use your own
+app registration instead:
 
 1. In [Microsoft Entra ID](https://entra.microsoft.com) register a new app.
-2. Under **Authentication**, enable **Allow public client flows**.
-3. Add the delegated permission `XboxLive.signin` (Microsoft Graph → APIs my
+2. Under **Authentication**, enable **Allow public client flows** (required for
+   the device-code flow — no client secret is used).
+3. Set **Supported account types** to match where you want people to sign in
+   from, then set the matching tenant in `src-tauri/src/core/auth/microsoft.rs`
+   (`TENANT`): your directory id for single-tenant, or `consumers`,
+   `organizations`, or `common`.
+4. Add the delegated permission `XboxLive.signin` (Microsoft Graph → APIs my
    organization uses → Xbox Live).
-4. Copy the **Application (client) ID** into **Settings → Modrinth &
+5. Copy the **Application (client) ID** into **Settings → Modrinth &
    authentication → Microsoft client ID** (or set the `AETHER_MS_CLIENT_ID`
    environment variable).
 
-Until then, offline profiles work fully.
+Offline profiles always work, regardless of the above.
 
 ---
 

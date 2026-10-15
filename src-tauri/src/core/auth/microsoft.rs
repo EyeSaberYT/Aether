@@ -20,9 +20,21 @@ use serde::Deserialize;
 use super::{Account, AccountKind};
 use crate::error::{AetherError, Result};
 
-const DEVICE_CODE_URL: &str =
-    "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
-const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
+/// Microsoft Entra tenant used for sign-in.
+///
+/// This matches the "My organization only" (single-tenant) app registration, so
+/// only work or school accounts in this directory can sign in. To allow personal
+/// Microsoft accounts instead, change this to `consumers`; use `organizations`
+/// for any work/school account, or `common` for both.
+const TENANT: &str = "5f03342b-5ed4-428f-971a-d0d601390635";
+
+fn device_code_url() -> String {
+    format!("https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/devicecode")
+}
+
+fn token_url() -> String {
+    format!("https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/token")
+}
 const XBL_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
 const XSTS_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
 const MC_LOGIN_URL: &str = "https://api.minecraftservices.com/authentication/login_with_xbox";
@@ -129,7 +141,7 @@ pub async fn request_device_code(
     client_id: &str,
 ) -> Result<(DeviceCodeInfo, String, u64)> {
     let res = http
-        .post(DEVICE_CODE_URL)
+        .post(device_code_url())
         .form(&[("client_id", client_id), ("scope", SCOPE)])
         .send()
         .await?;
@@ -175,7 +187,7 @@ pub async fn poll_for_token(
         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
 
         let res = http
-            .post(TOKEN_URL)
+            .post(token_url())
             .form(&[
                 ("client_id", client_id),
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
@@ -227,7 +239,7 @@ pub async fn refresh_token(
     refresh_token: &str,
 ) -> Result<(String, Option<String>, i64)> {
     let res = http
-        .post(TOKEN_URL)
+        .post(token_url())
         .form(&[
             ("client_id", client_id),
             ("grant_type", "refresh_token"),
