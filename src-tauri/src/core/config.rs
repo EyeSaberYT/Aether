@@ -40,12 +40,13 @@ impl Default for Settings {
             java_path: None,
             default_memory_min: 1024,
             default_memory_max: 4096,
-            default_jvm_args: vec![
-                "-XX:+UseG1GC".into(),
-                "-XX:-UseAdaptiveSizePolicy".into(),
-                "-XX:G1NewSizePercent=20".into(),
-                "-Dfile.encoding=UTF-8".into(),
-            ],
+            // Deliberately conservative, because these are passed to whatever
+            // Java the game needs — currently Java 25 for Minecraft 26.x. Tuning
+            // flags like -XX:G1NewSizePercent are *experimental* there and abort
+            // the JVM unless -XX:+UnlockExperimentalVMOptions precedes them,
+            // which is a poor trade for a few percent of GC tuning. G1 is the
+            // default collector anyway, so only the encoding is worth setting.
+            default_jvm_args: vec!["-Dfile.encoding=UTF-8".into()],
             concurrent_downloads: 8,
             check_updates_on_start: true,
             show_snapshots: false,
