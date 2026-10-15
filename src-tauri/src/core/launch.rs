@@ -91,7 +91,11 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
             "java",
             format!("Java {required} is missing — downloading it for you…"),
         ));
-        runtime = Some(java::install(http, paths, required, sink.clone()).await?);
+        runtime = Some(
+            java::install(http, paths, required, sink.clone())
+                .await
+                .map_err(|e| AetherError::msg(format!("While setting up Java: {e}")))?,
+        );
     }
     let runtime = runtime.ok_or_else(|| {
         AetherError::msg(format!(
@@ -109,7 +113,8 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
         settings.concurrent_downloads.max(1),
         sink.clone(),
     )
-    .await?;
+    .await
+    .map_err(|e| AetherError::msg(format!("While downloading the game files: {e}")))?;
 
     // ---- 4. build the command -------------------------------------------
     let mut jvm_args = settings.default_jvm_args.clone();

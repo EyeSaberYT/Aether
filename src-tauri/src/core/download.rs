@@ -167,8 +167,13 @@ pub async fn download_one(
         return Ok(false);
     }
 
+    // Every io error below carries the offending path: a bare "file not found"
+    // is impossible to act on, while `…\lib\jvm.cfg.part` tells the user (and
+    // us) exactly what went wrong.
     if let Some(parent) = spec.dest.parent() {
-        std::fs::create_dir_all(parent)?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            AetherError::msg(format!("Couldn't create {}: {e}", parent.display()))
+        })?;
     }
 
     let response = http.get(&spec.url).send().await?;
@@ -183,7 +188,9 @@ pub async fn download_one(
     // Stream to a temporary file so a cancelled download never leaves a
     // half-written jar in place.
     let tmp = spec.dest.with_extension("part");
-    let mut file = std::fs::File::create(&tmp)?;
+    let mut file = std::fs::File::create(&tmp).map_err(|e| {
+        AetherError::msg(format!("Couldn't create {}: {e}", tmp.display()))
+    })?;
     let mut hasher = Sha1::new();
     let mut stream = response.bytes_stream();
 
@@ -191,10 +198,14 @@ pub async fn download_one(
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
         hasher.update(&chunk);
-        file.write_all(&chunk)?;
+        file.write_all(&chunk).map_err(|e| {
+            AetherError::msg(format!("Couldn't write {}: {e}", tmp.display()))
+        })?;
         on_bytes(chunk.len() as u64);
     }
-    file.flush()?;
+    file.flush().map_err(|e| {
+        AetherError::msg(format!("Couldn't flush {}: {e}", tmp.display()))
+    })?;
     drop(file);
 
     if let Some(expected) = spec.sha1.as_deref() {
@@ -212,7 +223,13 @@ pub async fn download_one(
     if spec.dest.exists() {
         let _ = std::fs::remove_file(&spec.dest);
     }
-    std::fs::rename(&tmp, &spec.dest)?;
+    std::fs::rename(&tmp, &spec.dest).map_err(|e| {
+        AetherError::msg(format!(
+            "Couldn't move {} into {}: {e}",
+            tmp.display(),
+            spec.dest.display()
+        ))
+    })?;
     Ok(true)
 }
 
