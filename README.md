@@ -205,6 +205,23 @@ To use your own app registration instead:
 
 Offline profiles always work, regardless of the above.
 
+#### Browser sign-in fallback
+
+Because a fresh app registration stays blocked until Mojang approves it, the
+sign-in dialog offers a second path under **"Sign-in not working? Use browser
+sign-in"**. It signs in through Microsoft's own Minecraft client id — the one the
+official launcher uses, which is already allow-listed — via the legacy
+`login.live.com` flow.
+
+That client id is not an Entra application, so the device-code flow is not
+available for it at all. Instead the browser finishes on a Microsoft-owned page
+and you copy the address bar back into Aether, which exchanges the one-time code
+directly with Microsoft. The code never leaves your machine, and the exchange
+happens in the same local backend that performs every other request.
+
+Accounts created this way are flagged internally (`Account::legacy_auth`) so that
+token refreshes go back to `login.live.com` rather than the identity platform.
+
 ---
 
 ## Development
