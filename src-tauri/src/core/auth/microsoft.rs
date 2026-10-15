@@ -20,13 +20,15 @@ use serde::Deserialize;
 use super::{Account, AccountKind};
 use crate::error::{AetherError, Result};
 
-/// Microsoft Entra tenant used for sign-in.
+/// Microsoft identity authority used for sign-in.
 ///
-/// This matches the "My organization only" (single-tenant) app registration, so
-/// only work or school accounts in this directory can sign in. To allow personal
-/// Microsoft accounts instead, change this to `consumers`; use `organizations`
-/// for any work/school account, or `common` for both.
-const TENANT: &str = "5f03342b-5ed4-428f-971a-d0d601390635";
+/// This must be `consumers`. The `XboxLive.signin` scope only exists for
+/// personal Microsoft accounts; requesting it against a directory id or
+/// `common` fails with AADSTS650053 ("scope ... doesn't exist on the resource
+/// Microsoft Graph"). The app registration must therefore be configured to
+/// allow personal Microsoft accounts (see the README), and users must sign in
+/// with the personal account that owns Minecraft.
+const TENANT: &str = "consumers";
 
 fn device_code_url() -> String {
     format!("https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/devicecode")

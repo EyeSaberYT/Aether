@@ -173,25 +173,33 @@ npm run tauri:build    # build a distributable installer
 ### Enabling Microsoft sign-in
 
 Microsoft sign-in ships with a built-in Azure "public client" application id, so
-offline profiles work immediately and online sign-in works without extra setup
-for accounts in the bundled registration's directory.
+offline profiles work immediately and online sign-in works out of the box.
 
-The bundled registration is **single-tenant** and the code targets that tenant,
-so only work or school accounts in that directory can sign in. To use your own
-app registration instead:
+Minecraft authentication has hard requirements, because it relies on the
+`XboxLive.signin` scope:
+
+- The Azure app must allow **personal Microsoft accounts** — work/school (Entra)
+  accounts cannot hold a Minecraft Java license for this flow.
+- The code signs in via the **`consumers`** authority
+  (`src-tauri/src/core/auth/microsoft.rs`, `TENANT`). Requesting
+  `XboxLive.signin` against a tenant id or `common` fails with
+  `AADSTS650053`.
+- Users sign in with the personal Microsoft account that owns Minecraft.
+
+To use your own app registration instead:
 
 1. In [Microsoft Entra ID](https://entra.microsoft.com) register a new app.
-2. Under **Authentication**, enable **Allow public client flows** (required for
-   the device-code flow — no client secret is used).
-3. Set **Supported account types** to match where you want people to sign in
-   from, then set the matching tenant in `src-tauri/src/core/auth/microsoft.rs`
-   (`TENANT`): your directory id for single-tenant, or `consumers`,
-   `organizations`, or `common`.
-4. Add the delegated permission `XboxLive.signin` (Microsoft Graph → APIs my
-   organization uses → Xbox Live).
-5. Copy the **Application (client) ID** into **Settings → Modrinth &
+2. Under **Authentication** → **Supported account types**, choose
+   **Personal Microsoft accounts only**.
+3. On the same page, enable **Allow public client flows** (required for the
+   device-code flow — no client secret is used).
+4. Copy the **Application (client) ID** into **Settings → Modrinth &
    authentication → Microsoft client ID** (or set the `AETHER_MS_CLIENT_ID`
-   environment variable).
+   environment variable, or change `default_client_id()`).
+5. New app registrations must be allow-listed by Mojang before
+   `api.minecraftservices.com` will accept them; until then the final login step
+   returns `Invalid app registration` (HTTP 403). Request access at
+   <https://aka.ms/mce-reviewappid>.
 
 Offline profiles always work, regardless of the above.
 

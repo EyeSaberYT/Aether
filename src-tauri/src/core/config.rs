@@ -73,8 +73,8 @@ pub enum Theme {
 /// README for how to register one (it takes ~2 minutes and is free).
 pub fn default_client_id() -> String {
     std::env::var("AETHER_MS_CLIENT_ID").unwrap_or_else(|_| {
-        // Aether's Azure app registration (public client, single-tenant).
-        "a355068a-2e6b-46a3-9e2f-c53f77d0f657".to_string()
+        // Aether's Azure app registration (public client, personal accounts).
+        "25257470-05eb-4959-bc32-6b6bdb883bac".to_string()
     })
 }
 
