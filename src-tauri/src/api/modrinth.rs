@@ -17,7 +17,7 @@ use crate::error::{AetherError, Result};
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct SearchResponse {
     pub hits: Vec<SearchHit>,
     pub offset: u32,
@@ -26,7 +26,7 @@ pub struct SearchResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct SearchHit {
     pub project_id: String,
     pub project_type: String,
@@ -63,7 +63,7 @@ pub struct SearchHit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct Project {
     pub id: String,
     pub slug: String,
@@ -114,7 +114,7 @@ pub struct Project {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct GalleryItem {
     pub url: String,
     #[serde(default)]
@@ -126,7 +126,7 @@ pub struct GalleryItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct License {
     pub id: String,
     #[serde(default)]
@@ -136,7 +136,7 @@ pub struct License {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct Version {
     pub id: String,
     pub project_id: String,
@@ -162,7 +162,7 @@ pub struct Version {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct VersionFile {
     #[serde(default)]
     pub hashes: HashMap<String, String>,
@@ -177,7 +177,7 @@ pub struct VersionFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct Dependency {
     #[serde(default)]
     pub version_id: Option<String>,
@@ -191,7 +191,7 @@ pub struct Dependency {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct Tag {
     pub name: String,
     #[serde(default)]
@@ -208,7 +208,7 @@ pub struct Tag {
 
 /// A resolved "install this file" instruction produced by the dependency walker.
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct ResolvedFile {
     pub project_id: String,
     pub version_id: String,
@@ -225,7 +225,7 @@ pub struct ResolvedFile {
 
 /// Search filters accepted by the launcher UI.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase", deserialize = "camelCase"))]
 pub struct SearchFilters {
     pub query: String,
     /// `mod`, `modpack`, `resourcepack`, `shader`, `datapack`.
@@ -578,4 +578,98 @@ pub fn urlencode(value: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A trimmed, real-shaped `/search` response. The API is snake_case; this
+    /// guards against regressing back to camelCase-only deserialization.
+    const SEARCH_JSON: &str = r#"{
+        "hits": [{
+            "project_id": "AANobbMI",
+            "project_type": "mod",
+            "slug": "sodium",
+            "author": "jellysquid3",
+            "title": "Sodium",
+            "description": "A high-performance rendering engine replacement.",
+            "categories": ["fabric", "optimization"],
+            "display_categories": ["fabric", "optimization"],
+            "versions": ["1.21.1"],
+            "downloads": 245166038,
+            "follows": 41770,
+            "icon_url": "https://cdn.modrinth.com/data/AANobbMI/icon.webp",
+            "date_created": "2021-01-03T00:53:34.185936+00:00",
+            "date_modified": "2026-09-20T21:27:06.329936+00:00",
+            "latest_version": "NM9w06Kr",
+            "license": "LicenseRef-Polyform-Shield-1.0.0",
+            "client_side": "required",
+            "server_side": "unsupported",
+            "gallery": []
+        }],
+        "offset": 0,
+        "limit": 1,
+        "total_hits": 355
+    }"#;
+
+    #[test]
+    fn search_response_deserializes_snake_case() {
+        let response: SearchResponse = serde_json::from_str(SEARCH_JSON).unwrap();
+        assert_eq!(response.total_hits, 355);
+        let hit = &response.hits[0];
+        assert_eq!(hit.project_id, "AANobbMI");
+        assert_eq!(hit.project_type, "mod");
+        assert_eq!(hit.display_categories, ["fabric", "optimization"]);
+        assert_eq!(hit.latest_version.as_deref(), Some("NM9w06Kr"));
+        assert_eq!(hit.client_side.as_deref(), Some("required"));
+    }
+
+    #[test]
+    fn wire_types_serialize_camel_case_for_the_frontend() {
+        let response: SearchResponse = serde_json::from_str(SEARCH_JSON).unwrap();
+        let json = serde_json::to_value(&response.hits[0]).unwrap();
+        assert_eq!(json["projectId"], "AANobbMI");
+        assert!(json.get("project_id").is_none());
+        assert!(json.get("displayCategories").is_some());
+    }
+
+    #[test]
+    fn version_deserializes_snake_case() {
+        let json = r#"{
+            "id": "NM9w06Kr",
+            "project_id": "AANobbMI",
+            "name": "Sodium 0.6.0",
+            "version_number": "mc1.21.1-0.6.0",
+            "version_type": "release",
+            "game_versions": ["1.21.1"],
+            "loaders": ["fabric"],
+            "downloads": 1234,
+            "date_published": "2024-08-01T00:00:00Z",
+            "changelog": "fixes",
+            "dependencies": [{
+                "version_id": null,
+                "project_id": "P7dR8mSH",
+                "file_name": null,
+                "dependency_type": "required"
+            }],
+            "files": [{
+                "hashes": { "sha1": "abc", "sha512": "def" },
+                "url": "https://cdn.modrinth.com/data/AANobbMI/version.jar",
+                "filename": "sodium.jar",
+                "primary": true,
+                "size": 42,
+                "file_type": null
+            }]
+        }"#;
+        let version: Version = serde_json::from_str(json).unwrap();
+        assert_eq!(version.project_id, "AANobbMI");
+        assert_eq!(version.version_number, "mc1.21.1-0.6.0");
+        assert_eq!(version.files[0].hashes["sha1"], "abc");
+        assert_eq!(version.dependencies[0].dependency_type, "required");
+        assert_eq!(
+            version.dependencies[0].project_id.as_deref(),
+            Some("P7dR8mSH")
+        );
+    }
 }
