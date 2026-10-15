@@ -107,11 +107,11 @@ command. The command delegates to `core/`, which never depends on Tauri. Long
 operations stream progress over the `download://progress` event; the Microsoft
 device-code prompt arrives on `auth://device-code`.
 
-**On-disk layout** (under the OS data directory, e.g.
-`%APPDATA%\Aether` on Windows):
+**On-disk layout** — one dot-prefixed folder holding everything (e.g.
+`%APPDATA%\.aether` on Windows), the way the Modrinth App keeps its data:
 
 ```
-Aether/
+.aether/
   config.json          global settings
   accounts.json        cached accounts
   instances.json       instance index
@@ -124,7 +124,8 @@ Aether/
   logs/                launcher + game logs
 ```
 
-Set `AETHER_DATA_DIR` to relocate everything.
+Data written by earlier versions (`Aether/`) is moved into `.aether`
+automatically on first start. Set `AETHER_DATA_DIR` to relocate everything.
 
 ---
 
