@@ -159,8 +159,11 @@ npm run tauri:build    # build a distributable installer
 
 > **Windows note.** If a standalone (e.g. Chocolatey) GNU Rust shadows rustup's
 > MSVC toolchain, Cargo builds fail with `dlltool.exe: program not found`.
-> Dot-source the bundled helper first — it prefers the rustup MSVC toolchain and
-> loads the Visual Studio environment:
+> `npm run tauri:dev` and `npm run tauri:build` handle this automatically: they
+> go through `scripts/run-tauri.mjs`, which prefers the rustup MSVC toolchain and
+> loads the Visual Studio build environment before invoking the CLI.
+>
+> If you need to run `cargo` yourself, dot-source the bundled helper first:
 >
 > ```powershell
 > . .\scripts\dev-shell.ps1
