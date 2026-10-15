@@ -34,6 +34,7 @@ pub async fn launch_instance(
         account: &account,
         settings: &settings,
         sink: state.sink(&app),
+        events: state.game_sink(&app),
         dry_run: false,
     })
     .await?;
@@ -65,6 +66,7 @@ pub async fn launch_preview(state: State<'_, AppState>, id: String) -> Result<St
         account: &account,
         settings: &settings,
         sink: crate::core::download::silent(),
+        events: launch::silent_events(),
         dry_run: true,
     })
     .await?;

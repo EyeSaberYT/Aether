@@ -192,6 +192,20 @@ export interface LaunchedProcess {
   arguments: string[];
 }
 
+/** One line of game output, pushed over `game://output` as it is produced. */
+export interface GameOutput {
+  instanceId: string;
+  stream: "stdout" | "stderr";
+  line: string;
+}
+
+/** Final status of a game process, pushed over `game://exit`. */
+export interface GameExit {
+  instanceId: string;
+  /** Exit code, or null when the process was killed by a signal. */
+  code: number | null;
+}
+
 export interface ModpackPreview {
   name: string;
   summary: string | null;

@@ -5,8 +5,9 @@
 
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::Arc;
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use super::auth::Account;
 use super::config::Settings;
@@ -25,6 +26,8 @@ pub struct LaunchRequest<'a> {
     pub account: &'a Account,
     pub settings: &'a Settings,
     pub sink: ProgressSink,
+    /// Receives the game's console output and its exit notification.
+    pub events: GameEventSink,
     /// Skip launching and just return the command (used by "preview command").
     pub dry_run: bool,
 }
@@ -39,6 +42,46 @@ pub struct LaunchedProcess {
     pub arguments: Vec<String>,
 }
 
+/// Which of the game's two output streams a line came from.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+/// One line of game output, forwarded to the UI the moment it appears.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameOutput {
+    pub instance_id: String,
+    pub stream: OutputStream,
+    pub line: String,
+}
+
+/// Sent once the game process has exited.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameExit {
+    pub instance_id: String,
+    /// Exit status, or `None` when the process was killed by a signal.
+    pub code: Option<i32>,
+}
+
+/// Something a running game told us: a line of output, or that it stopped.
+pub enum GameEvent {
+    Output(GameOutput),
+    Exit(GameExit),
+}
+
+/// Receives [`GameEvent`]s for the lifetime of a game process.
+pub type GameEventSink = Arc<dyn Fn(GameEvent) + Send + Sync>;
+
+/// A sink that discards every event — used for dry runs and previews.
+pub fn silent_events() -> GameEventSink {
+    Arc::new(|_| {})
+}
+
 /// Run the full pipeline and start the game.
 pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
     let LaunchRequest {
@@ -48,6 +91,7 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
         account,
         settings,
         sink,
+        events,
         dry_run,
     } = request;
 
@@ -188,49 +232,56 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
 
     let pid = child.id().unwrap_or(0);
 
-    // Stream stdout/stderr into a log file so the crash viewer has something to
-    // show. Each stream gets its own task so output stays live.
+    // Keep the whole transcript on disk for the crash viewer, while relaying
+    // every line to the UI as it arrives. Both streams share one handle so
+    // stdout and stderr stay interleaved in the order they happened.
+    let log_handle = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)
+        .await
+        .map_err(|e| AetherError::msg(format!("Couldn't open {}: {e}", log_file.display())))?;
+    let log_handle = Arc::new(tokio::sync::Mutex::new(log_handle));
+
     if let Some(stdout) = child.stdout.take() {
-        let path = log_file.clone();
-        tokio::spawn(async move {
-            if let Ok(mut file) = tokio::fs::File::create(&path).await {
-                let _ = tokio::io::copy(&mut { stdout }, &mut file).await;
-                let _ = file.flush().await;
-            }
-        });
+        pump_output(
+            stdout,
+            OutputStream::Stdout,
+            instance.id.clone(),
+            events.clone(),
+            log_handle.clone(),
+        );
     }
     if let Some(stderr) = child.stderr.take() {
-        let path = log_file.clone();
-        tokio::spawn(async move {
-            if let Ok(mut file) = tokio::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)
-                .await
-            {
-                let _ = tokio::io::copy(&mut { stderr }, &mut file).await;
-                let _ = file.flush().await;
-            }
-        });
+        pump_output(
+            stderr,
+            OutputStream::Stderr,
+            instance.id.clone(),
+            events.clone(),
+            log_handle.clone(),
+        );
     }
 
     // Reap the child in the background so we don't leave a zombie.
     let watched = instance.id.clone();
     let paths_clone = paths.clone();
     tokio::spawn(async move {
-        let exit = child.wait().await;
-        match exit {
-            Ok(status) => {
-                log::info!("instance {watched} exited with {status}");
-                // Bump play time if we can.
-                if let Ok(mut store) = instance::InstanceStore::load(&paths_clone) {
-                    if let Ok(instance) = store.get_mut(&watched) {
-                        instance.last_played = Some(chrono::Utc::now().to_rfc3339());
-                    }
-                    let _ = store.save(&paths_clone);
-                }
-            }
+        let status = child.wait().await;
+        match &status {
+            Ok(status) => log::info!("instance {watched} exited with {status}"),
             Err(error) => log::warn!("failed to wait for instance {watched}: {error}"),
+        }
+        events(GameEvent::Exit(GameExit {
+            instance_id: watched.clone(),
+            code: status.ok().and_then(|status| status.code()),
+        }));
+
+        // Bump play time if we can.
+        if let Ok(mut store) = instance::InstanceStore::load(&paths_clone) {
+            if let Ok(instance) = store.get_mut(&watched) {
+                instance.last_played = Some(chrono::Utc::now().to_rfc3339());
+            }
+            let _ = store.save(&paths_clone);
         }
     });
 
@@ -250,6 +301,38 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
         command: java_path.to_string_lossy().to_string(),
         arguments: args,
     })
+}
+
+/// Relay one of the game's output streams to the log file and to the UI.
+///
+/// Reading line by line instead of copying raw bytes is what makes the console
+/// live: each complete line is pushed to the frontend the moment it arrives,
+/// while the same text is appended to the log for the crash viewer.
+fn pump_output<R>(
+    reader: R,
+    stream: OutputStream,
+    instance_id: String,
+    events: GameEventSink,
+    log_handle: Arc<tokio::sync::Mutex<tokio::fs::File>>,
+) where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        let mut lines = tokio::io::BufReader::new(reader).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            {
+                let mut file = log_handle.lock().await;
+                let _ = file.write_all(line.as_bytes()).await;
+                let _ = file.write_all(b"\n").await;
+                let _ = file.flush().await;
+            }
+            events(GameEvent::Output(GameOutput {
+                instance_id: instance_id.clone(),
+                stream,
+                line,
+            }));
+        }
+    });
 }
 
 /// Read the tail of the most recent log for an instance.

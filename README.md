@@ -105,7 +105,8 @@ src-tauri/src/
 **Data flow.** React calls a function in `src/lib/api.ts`, which invokes a Tauri
 command. The command delegates to `core/`, which never depends on Tauri. Long
 operations stream progress over the `download://progress` event; the Microsoft
-device-code prompt arrives on `auth://device-code`.
+device-code prompt arrives on `auth://device-code`; and a running game streams
+its console over `game://output`, followed by `game://exit` when it stops.
 
 **On-disk layout** — one dot-prefixed folder holding everything (e.g.
 `%APPDATA%\.aether` on Windows), the way the Modrinth App keeps its data:

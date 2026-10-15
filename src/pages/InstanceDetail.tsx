@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Boxes,
   Copy,
+  Eraser,
   FileText,
   FolderOpen,
   Package,
   Play,
-  RefreshCw,
   Save,
   Settings2,
   SquarePen,
+  Terminal,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -53,6 +54,7 @@ import { instances as instancesApi, launch as launchApi, modpacks, system } from
 import { pickDirectory, pickSavePath } from "@/lib/dialogs";
 import { formatBytes, formatDuration, loaderColor, loaderLabel, relativeTime } from "@/lib/format";
 import type { ContentEntry, Instance, QuickPlay } from "@/lib/tauri";
+import { useConsole } from "@/store/useConsole";
 import { useInstances } from "@/store/useInstances";
 import { useProgress } from "@/store/useProgress";
 import { cn } from "@/lib/utils";
@@ -260,8 +262,8 @@ export function InstanceDetail() {
           <TabsTrigger value="settings">
             <Settings2 className="mr-2 h-4 w-4" /> Settings
           </TabsTrigger>
-          <TabsTrigger value="logs">
-            <FileText className="mr-2 h-4 w-4" /> Logs
+          <TabsTrigger value="console">
+            <Terminal className="mr-2 h-4 w-4" /> Console
           </TabsTrigger>
         </TabsList>
 
@@ -280,8 +282,8 @@ export function InstanceDetail() {
             }}
           />
         </TabsContent>
-        <TabsContent value="logs">
-          <LogsTab instanceId={instance.id} />
+        <TabsContent value="console">
+          <ConsoleTab instanceId={instance.id} isRunning={isRunning} />
         </TabsContent>
       </Tabs>
 
@@ -814,49 +816,126 @@ function Field({
 }
 
 // ---------------------------------------------------------------------------
-// Logs
+// Console
 // ---------------------------------------------------------------------------
 
-function LogsTab({ instanceId }: { instanceId: string }) {
-  const [log, setLog] = useState<string | null | undefined>(undefined);
-  const [loading, setLoading] = useState(false);
+/** Distance from the bottom, in pixels, that still counts as "following". */
+const FOLLOW_THRESHOLD = 24;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setLog(await launchApi.logs(instanceId, 800));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setLoading(false);
-    }
-  }, [instanceId]);
+/**
+ * Live console for an instance.
+ *
+ * Lines arrive from the backend over `game://output` the moment the game prints
+ * them, so the view fills in as it runs. When there is nothing live yet the last
+ * launch log is loaded instead, which keeps the output around after a crash.
+ */
+function ConsoleTab({ instanceId, isRunning }: { instanceId: string; isRunning: boolean }) {
+  const lines = useConsole((state) => state.lines[instanceId]);
+  const replace = useConsole((state) => state.replace);
+  const clear = useConsole((state) => state.clear);
 
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [follow, setFollow] = useState(true);
+  const viewport = useRef<HTMLDivElement>(null);
+  const seeded = useRef<string | null>(null);
+
+  // Seed once per instance, and only when nothing has been streamed yet.
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (seeded.current === instanceId) return;
+    seeded.current = instanceId;
+    if ((useConsole.getState().lines[instanceId]?.length ?? 0) > 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      setLoadingHistory(true);
+      try {
+        const log = await launchApi.logs(instanceId, 500);
+        if (!cancelled && log) {
+          replace(
+            instanceId,
+            log.split(/\r?\n/).filter((line) => line.length > 0),
+          );
+        }
+      } catch {
+        // A first launch has no log yet; an empty console is the right answer.
+      } finally {
+        if (!cancelled) setLoadingHistory(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [instanceId, replace]);
+
+  // Keep the newest output in view, unless the user scrolled up to read back.
+  useEffect(() => {
+    if (!follow) return;
+    const element = viewport.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [lines, follow]);
+
+  function handleScroll() {
+    const element = viewport.current;
+    if (!element) return;
+    const fromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    setFollow(fromBottom < FOLLOW_THRESHOLD);
+  }
+
+  const empty = (lines?.length ?? 0) === 0;
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">Most recent launch log</p>
-        <Button variant="outline" size="sm" disabled={loading} onClick={() => void load()}>
-          {loading ? <Spinner /> : <RefreshCw />} Refresh
-        </Button>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-muted-foreground">
+            {isRunning ? "Live output from the running game" : "Most recent launch output"}
+          </p>
+          {isRunning && (
+            <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+              live
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {!follow && !empty && (
+            <Button variant="ghost" size="sm" onClick={() => setFollow(true)}>
+              Jump to end
+            </Button>
+          )}
+          <Button variant="outline" size="sm" disabled={empty} onClick={() => clear(instanceId)}>
+            <Eraser /> Clear
+          </Button>
+        </div>
       </div>
 
-      {log === undefined ? (
+      {loadingHistory && empty ? (
         <Skeleton className="h-64 rounded-xl" />
-      ) : log === null ? (
+      ) : empty ? (
         <EmptyState
           icon={FileText}
-          title="No logs yet"
-          description="Launch the game once and its output will appear here."
+          title="Nothing here yet"
+          description="Launch the game and everything it prints will stream in live."
         />
       ) : (
-        <pre className="max-h-[28rem] overflow-auto rounded-xl border bg-black/40 p-4 font-mono text-xs leading-relaxed text-muted-foreground">
-          {log}
-        </pre>
+        <div
+          ref={viewport}
+          onScroll={handleScroll}
+          className="max-h-[32rem] min-h-[16rem] overflow-auto rounded-xl border bg-black/60 p-4 font-mono text-xs leading-relaxed"
+        >
+          {lines?.map((line) => (
+            <div
+              key={line.id}
+              className={cn(
+                "whitespace-pre-wrap break-words",
+                line.stream === "stderr" ? "text-red-300/90" : "text-zinc-300/90",
+              )}
+            >
+              {line.text}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

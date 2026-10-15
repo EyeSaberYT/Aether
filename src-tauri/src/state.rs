@@ -8,6 +8,7 @@ use crate::core::auth::AccountStore;
 use crate::core::config::Settings;
 use crate::core::download::ProgressSink;
 use crate::core::instance::InstanceStore;
+use crate::core::launch::{GameEvent, GameEventSink};
 use crate::core::paths::AppPaths;
 use crate::error::Result;
 
@@ -61,6 +62,23 @@ impl AppState {
         let app = app.clone();
         Arc::new(move |progress| {
             let _ = app.emit("download://progress", progress);
+        })
+    }
+
+    /// A sink for game console output and process lifecycle events.
+    ///
+    /// Output goes out as `game://output` and the final status as `game://exit`,
+    /// which is what the in-app console listens to.
+    pub fn game_sink(&self, app: &tauri::AppHandle) -> GameEventSink {
+        use tauri::Emitter;
+        let app = app.clone();
+        Arc::new(move |event| match event {
+            GameEvent::Output(output) => {
+                let _ = app.emit("game://output", output);
+            }
+            GameEvent::Exit(exit) => {
+                let _ = app.emit("game://exit", exit);
+            }
         })
     }
 }
