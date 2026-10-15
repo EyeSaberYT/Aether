@@ -75,6 +75,37 @@ pub async fn auth_login_microsoft(app: AppHandle, state: State<'_, AppState>) ->
     })
 }
 
+/// The URL to open for the legacy browser sign-in.
+///
+/// Used when our own app registration hasn't been allow-listed by Mojang yet:
+/// this path borrows Microsoft's own Minecraft client id, which already is.
+#[tauri::command]
+pub fn auth_legacy_url() -> String {
+    microsoft::legacy_sign_in_url().to_string()
+}
+
+/// Complete the legacy sign-in from the URL the user copied out of the browser.
+#[tauri::command]
+pub async fn auth_login_microsoft_legacy(
+    state: State<'_, AppState>,
+    redirect: String,
+) -> Result<PublicAccount> {
+    let account = microsoft::complete_legacy_login(&state.http, &redirect).await?;
+
+    let mut store = state.accounts.write().await;
+    store.active = Some(account.uuid.clone());
+    store.upsert(account.clone());
+    store.save(&state.paths)?;
+
+    Ok(PublicAccount {
+        uuid: account.uuid,
+        username: account.username,
+        kind: account.kind,
+        skin_url: account.skin_url,
+        active: true,
+    })
+}
+
 /// Create a local, offline account.
 #[tauri::command]
 pub async fn auth_login_offline(
@@ -145,8 +176,13 @@ pub async fn active_account(state: &AppState) -> Result<Account> {
         return Ok(account);
     }
 
-    // Refresh and persist the new token.
-    let refreshed = microsoft::refresh_account(&state.http, &client_id, &account).await?;
+    // Refresh and persist the new token. Accounts from the legacy browser flow
+    // live on a different Microsoft endpoint and must go back through it.
+    let refreshed = if account.legacy_auth {
+        microsoft::refresh_legacy_account(&state.http, &account).await?
+    } else {
+        microsoft::refresh_account(&state.http, &client_id, &account).await?
+    };
     {
         let mut store = state.accounts.write().await;
         store.upsert(refreshed.clone());

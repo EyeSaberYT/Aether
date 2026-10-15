@@ -38,6 +38,11 @@ export const auth = {
   accounts: () => invoke<PublicAccount[]>("auth_accounts"),
   current: () => invoke<PublicAccount | null>("auth_current"),
   loginMicrosoft: () => invoke<PublicAccount>("auth_login_microsoft"),
+  /** URL to open for the legacy (Microsoft client id) browser sign-in. */
+  legacyUrl: () => invoke<string>("auth_legacy_url"),
+  /** Finish that sign-in using the URL copied out of the browser. */
+  loginMicrosoftLegacy: (redirect: string) =>
+    invoke<PublicAccount>("auth_login_microsoft_legacy", { redirect }),
   loginOffline: (username: string, setActive = true) =>
     invoke<PublicAccount>("auth_login_offline", { username, setActive }),
   logout: (uuid: string) => invoke<PublicAccount[]>("auth_logout", { uuid }),

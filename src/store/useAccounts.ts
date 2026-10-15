@@ -14,6 +14,8 @@ interface AccountsState {
   error: string | null;
   refresh: () => Promise<void>;
   loginMicrosoft: () => Promise<PublicAccount>;
+  /** Finish the legacy browser sign-in from the URL copied out of the browser. */
+  loginMicrosoftLegacy: (redirect: string) => Promise<PublicAccount>;
   loginOffline: (username: string) => Promise<PublicAccount>;
   setActive: (uuid: string) => Promise<void>;
   logout: (uuid: string) => Promise<void>;
@@ -54,6 +56,18 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       throw error;
     } finally {
       set({ signingIn: false, deviceCode: null });
+    }
+  },
+
+  loginMicrosoftLegacy: async (redirect) => {
+    set({ error: null });
+    try {
+      const account = await auth.loginMicrosoftLegacy(redirect);
+      await get().refresh();
+      return account;
+    } catch (error) {
+      set({ error: String(error) });
+      throw error;
     }
   },
 

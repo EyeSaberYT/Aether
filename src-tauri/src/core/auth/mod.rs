@@ -36,6 +36,10 @@ pub struct Account {
     /// Player skin texture url, when available.
     #[serde(default)]
     pub skin_url: Option<String>,
+    /// True when the account was signed in through the legacy `login.live.com`
+    /// flow, whose tokens can only be refreshed through that same endpoint.
+    #[serde(default)]
+    pub legacy_auth: bool,
 }
 
 impl Account {

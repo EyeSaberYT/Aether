@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, KeyRound, UserRound } from "lucide-react";
+import { Check, ChevronDown, Copy, ExternalLink, KeyRound, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/common/Spinner";
-import { system } from "@/lib/api";
+import { auth, system } from "@/lib/api";
 import { useAccounts } from "@/store/useAccounts";
 import { cn } from "@/lib/utils";
 
@@ -28,9 +29,17 @@ export function SignInDialog({ open, onOpenChange }: SignInDialogProps) {
   const [username, setUsername] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Legacy browser sign-in fallback: the code is pasted here and handed straight
+  // to the local backend, never to any third party.
+  const [legacyOpen, setLegacyOpen] = useState(false);
+  const [legacyStarted, setLegacyStarted] = useState(false);
+  const [legacyUrl, setLegacyUrl] = useState("");
+  const [legacyBusy, setLegacyBusy] = useState(false);
+
   const signingIn = useAccounts((state) => state.signingIn);
   const deviceCode = useAccounts((state) => state.deviceCode);
   const loginMicrosoft = useAccounts((state) => state.loginMicrosoft);
+  const loginMicrosoftLegacy = useAccounts((state) => state.loginMicrosoftLegacy);
   const loginOffline = useAccounts((state) => state.loginOffline);
 
   // Reset transient state whenever the dialog closes.
@@ -38,6 +47,10 @@ export function SignInDialog({ open, onOpenChange }: SignInDialogProps) {
     if (!open) {
       setBusy(false);
       setUsername("");
+      setLegacyOpen(false);
+      setLegacyStarted(false);
+      setLegacyUrl("");
+      setLegacyBusy(false);
     }
   }, [open]);
 
@@ -63,6 +76,33 @@ export function SignInDialog({ open, onOpenChange }: SignInDialogProps) {
       toast.error(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Open Microsoft's own sign-in page in the system browser. */
+  async function handleLegacyOpen() {
+    try {
+      const url = await auth.legacyUrl();
+      await system.openUrl(url);
+      setLegacyStarted(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /** Hand the pasted redirect URL to the local backend to finish the flow. */
+  async function handleLegacyFinish() {
+    const value = legacyUrl.trim();
+    if (!value) return;
+    setLegacyBusy(true);
+    try {
+      const account = await loginMicrosoftLegacy(value);
+      toast.success(`Signed in as ${account.username}`);
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLegacyBusy(false);
     }
   }
 
@@ -136,6 +176,73 @@ export function SignInDialog({ open, onOpenChange }: SignInDialogProps) {
               {signingIn ? <Spinner /> : <Check />}
               {signingIn ? "Waiting for approval…" : "Sign in with Microsoft"}
             </Button>
+
+            <div className="border-t pt-3">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between text-xs text-muted-foreground transition-colors hover:text-foreground"
+                onClick={() => setLegacyOpen((value) => !value)}
+              >
+                <span>Sign-in not working? Use browser sign-in</span>
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform",
+                    legacyOpen && "rotate-180",
+                  )}
+                />
+              </button>
+
+              {legacyOpen && (
+                <div className="mt-3 space-y-3 rounded-lg border bg-card p-4">
+                  <p className="text-xs text-muted-foreground">
+                    Not every account works with the code above yet. This opens the same
+                    page the official launcher uses. When you finish, copy the whole address
+                    out of your browser's address bar and paste it below — it is sent
+                    straight to this app and nowhere else.
+                  </p>
+
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => void handleLegacyOpen()}
+                  >
+                    <ExternalLink /> Open sign-in page
+                  </Button>
+
+                  {legacyStarted && (
+                    <p className="text-xs text-muted-foreground">
+                      You'll land on a page reading{" "}
+                      <em>"You have reached a page that is not normally shown."</em> That is
+                      expected — the address bar holds what we need.
+                    </p>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="legacy-url" className="text-xs">
+                      Address from your browser
+                    </Label>
+                    <Textarea
+                      id="legacy-url"
+                      rows={3}
+                      spellCheck={false}
+                      className="font-mono text-xs"
+                      placeholder="https://login.live.com/oauth20_desktop.srf?code=…"
+                      value={legacyUrl}
+                      onChange={(event) => setLegacyUrl(event.target.value)}
+                    />
+                  </div>
+
+                  <Button
+                    className="w-full"
+                    variant="brand"
+                    disabled={legacyBusy || !legacyUrl.trim()}
+                    onClick={() => void handleLegacyFinish()}
+                  >
+                    {legacyBusy ? <Spinner /> : <Check />} Complete sign-in
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <form

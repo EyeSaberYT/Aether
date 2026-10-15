@@ -46,6 +46,62 @@ const MC_ENTITLEMENTS_URL: &str = "https://api.minecraftservices.com/entitlement
 const SCOPE: &str = "XboxLive.signin offline_access";
 
 // ---------------------------------------------------------------------------
+// Legacy browser flow
+// ---------------------------------------------------------------------------
+//
+// A brand new Entra app registration is rejected by
+// `api.minecraftservices.com` ("Invalid app registration") until Mojang
+// allow-lists it at <https://aka.ms/mce-reviewappid>. Until that clears, users
+// can sign in through the flow the official launcher itself has always used:
+// Microsoft's own Minecraft client id.
+//
+// That id is *not* an Entra application, so the modern device-code endpoint
+// rejects it outright (HTTP 400) and there is no device-code variant at all.
+// The only way in is the legacy interactive flow, where the browser finishes on
+// a Microsoft-owned page and the resulting URL has to be handed back to the
+// launcher.
+
+/// Microsoft's own Minecraft client id, used by the official launcher.
+pub const LEGACY_CLIENT_ID: &str = "00000000402b5328";
+
+const LEGACY_TOKEN_URL: &str = "https://login.live.com/oauth20_token.srf";
+const LEGACY_REDIRECT_URI: &str = "https://login.live.com/oauth20_desktop.srf";
+const LEGACY_SCOPE: &str = "service::user.auth.xboxlive.com::MBI_SSL";
+
+/// The authorize URL for the legacy desktop flow.
+///
+/// Every part is fixed, so it is a constant rather than something we build and
+/// percent-encode at runtime.
+pub fn legacy_sign_in_url() -> &'static str {
+    "https://login.live.com/oauth20_authorize.srf\
+     ?client_id=00000000402b5328\
+     &scope=service%3A%3Auser.auth.xboxlive.com%3A%3AMBI_SSL\
+     &response_type=code\
+     &redirect_uri=https%3A%2F%2Flogin.live.com%2Foauth20_desktop.srf"
+}
+
+/// Which token family an Xbox Live ticket comes from.
+///
+/// Xbox Live expects a one-letter prefix that tells it how to read the ticket,
+/// and it differs between the two Microsoft endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TicketKind {
+    /// Microsoft identity platform (Entra) token, scope `XboxLive.signin`.
+    Modern,
+    /// Legacy Live (MBI_SSL) token from `login.live.com`.
+    Legacy,
+}
+
+impl TicketKind {
+    fn prefix(self) -> &'static str {
+        match self {
+            TicketKind::Modern => "d=",
+            TicketKind::Legacy => "t=",
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
 
@@ -266,6 +322,7 @@ pub async fn refresh_token(
 pub async fn xbox_chain(
     http: &reqwest::Client,
     ms_access_token: &str,
+    ticket: TicketKind,
 ) -> Result<(String, i64)> {
     // 3a. Xbox Live user token.
     let xbl_res = http
@@ -274,7 +331,7 @@ pub async fn xbox_chain(
             "Properties": {
                 "AuthMethod": "RPS",
                 "SiteName": "user.auth.xboxlive.com",
-                "RpsTicket": format!("d={ms_access_token}"),
+                "RpsTicket": format!("{}{}", ticket.prefix(), ms_access_token),
             },
             "RelyingParty": "http://auth.xboxlive.com",
             "TokenType": "JWT",
@@ -444,7 +501,7 @@ where
     let (ms_token, refresh, _) =
         poll_for_token(http, client_id, &device_code, interval, info.expires_in).await?;
 
-    let (mc_token, expires_in) = xbox_chain(http, &ms_token).await?;
+    let (mc_token, expires_in) = xbox_chain(http, &ms_token, TicketKind::Modern).await?;
     check_entitlements(http, &mc_token).await.ok();
     let (uuid, name) = fetch_profile(http, &mc_token).await?;
 
@@ -456,6 +513,7 @@ where
         expires_at: chrono::Utc::now().timestamp() + expires_in,
         refresh_token: refresh,
         skin_url: None,
+        legacy_auth: false,
     })
 }
 
@@ -471,7 +529,7 @@ pub async fn refresh_account(
         .ok_or_else(|| AetherError::Auth("No refresh token stored for this account.".into()))?;
 
     let (ms_token, new_refresh, _) = refresh_token(http, client_id, &refresh).await?;
-    let (mc_token, expires_in) = xbox_chain(http, &ms_token).await?;
+    let (mc_token, expires_in) = xbox_chain(http, &ms_token, TicketKind::Modern).await?;
     let (uuid, name) = fetch_profile(http, &mc_token).await?;
 
     Ok(Account {
@@ -482,7 +540,162 @@ pub async fn refresh_account(
         expires_at: chrono::Utc::now().timestamp() + expires_in,
         refresh_token: new_refresh.or(account.refresh_token.clone()),
         skin_url: account.skin_url.clone(),
+        legacy_auth: false,
     })
+}
+
+/// Finish the legacy browser sign-in from the URL the user copied back.
+pub async fn complete_legacy_login(
+    http: &reqwest::Client,
+    pasted_redirect: &str,
+) -> Result<Account> {
+    let code = legacy_code_from_redirect(pasted_redirect)?;
+
+    let res = http
+        .post(LEGACY_TOKEN_URL)
+        .form(&[
+            ("client_id", LEGACY_CLIENT_ID),
+            ("code", code.as_str()),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", LEGACY_REDIRECT_URI),
+            ("scope", LEGACY_SCOPE),
+        ])
+        .send()
+        .await?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let body = res.text().await.unwrap_or_default();
+        return Err(AetherError::Auth(format!(
+            "Microsoft rejected that sign-in code (HTTP {status}). Codes are single-use \
+             and expire after about ten minutes, so open the sign-in page again and copy \
+             the fresh URL. {body}"
+        )));
+    }
+
+    let token: TokenResponse = res.json().await?;
+    let (mc_token, expires_in) =
+        xbox_chain(http, &token.access_token, TicketKind::Legacy).await?;
+    check_entitlements(http, &mc_token).await.ok();
+    let (uuid, name) = fetch_profile(http, &mc_token).await?;
+
+    Ok(Account {
+        kind: AccountKind::Microsoft,
+        username: name,
+        uuid,
+        access_token: mc_token,
+        expires_at: chrono::Utc::now().timestamp() + expires_in,
+        refresh_token: token.refresh_token,
+        skin_url: None,
+        legacy_auth: true,
+    })
+}
+
+/// Re-authenticate an account created by [`complete_legacy_login`].
+///
+/// Its refresh token belongs to `login.live.com`, so it has to go back there
+/// with the legacy client id — the Microsoft identity endpoint would refuse it.
+pub async fn refresh_legacy_account(
+    http: &reqwest::Client,
+    account: &Account,
+) -> Result<Account> {
+    let refresh = account
+        .refresh_token
+        .clone()
+        .ok_or_else(|| AetherError::Auth("No refresh token stored for this account.".into()))?;
+
+    let res = http
+        .post(LEGACY_TOKEN_URL)
+        .form(&[
+            ("client_id", LEGACY_CLIENT_ID),
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh.as_str()),
+            ("scope", LEGACY_SCOPE),
+        ])
+        .send()
+        .await?;
+
+    if !res.status().is_success() {
+        return Err(AetherError::Auth(
+            "Your Microsoft session expired. Please sign in again.".into(),
+        ));
+    }
+
+    let token: TokenResponse = res.json().await?;
+    let (mc_token, expires_in) =
+        xbox_chain(http, &token.access_token, TicketKind::Legacy).await?;
+    let (uuid, name) = fetch_profile(http, &mc_token).await?;
+
+    Ok(Account {
+        kind: AccountKind::Microsoft,
+        username: name,
+        uuid,
+        access_token: mc_token,
+        expires_at: chrono::Utc::now().timestamp() + expires_in,
+        refresh_token: token.refresh_token.or(account.refresh_token.clone()),
+        skin_url: account.skin_url.clone(),
+        legacy_auth: true,
+    })
+}
+
+/// Pull the authorization code out of whatever the user pasted back.
+///
+/// The legacy redirect finishes on a page Microsoft owns, so the address bar is
+/// the only place the code exists. Accept a whole URL, a bare query string, or
+/// just the code itself, and report the friendly reason when Microsoft sent an
+/// error back instead.
+pub fn legacy_code_from_redirect(pasted: &str) -> Result<String> {
+    let text = pasted.trim();
+    if text.is_empty() {
+        return Err(AetherError::Auth(
+            "Paste the URL from the sign-in page's address bar first.".into(),
+        ));
+    }
+
+    if let Some(error) = query_value(text, "error") {
+        let description = query_value(text, "error_description").unwrap_or_default();
+        return Err(AetherError::Auth(format!(
+            "Microsoft declined the sign-in ({error}). {description}"
+        )));
+    }
+
+    if let Some(code) = query_value(text, "code") {
+        return Ok(code);
+    }
+
+    // A bare code has no URL punctuation in it.
+    if !text.contains('/') && !text.contains(' ') && !text.contains('?') {
+        return Ok(text.to_string());
+    }
+
+    Err(AetherError::Auth(
+        "That doesn't look like the sign-in page's address. Copy the entire URL from \
+         the address bar — it contains \"code=\"."
+            .into(),
+    ))
+}
+
+/// Read `key=value` out of a query string, ignoring lookalike keys.
+///
+/// The leading `?`/`&` matters: without it `device_code=` would answer a lookup
+/// for `code`.
+fn query_value(text: &str, key: &str) -> Option<String> {
+    let bare = format!("{key}=");
+    let candidates = [
+        if text.starts_with(&bare) { Some(0) } else { None },
+        text.find(&format!("?{bare}")).map(|at| at + 1),
+        text.find(&format!("&{bare}")).map(|at| at + 1),
+    ];
+
+    for start in candidates.into_iter().flatten() {
+        let rest = &text[start + bare.len()..];
+        let end = rest.find(['&', '#']).unwrap_or(rest.len());
+        let value = rest[..end].trim();
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
 }
 
 /// Insert dashes into a 32-char dashless UUID.
@@ -498,4 +711,63 @@ pub fn dashify_uuid(raw: &str) -> String {
         &raw[16..20],
         &raw[20..32]
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_a_code_from_a_pasted_url() {
+        let pasted = "https://login.live.com/oauth20_desktop.srf?code=M.C531_BAY.2.U.abc-123_XYZ&lc=1033";
+        assert_eq!(
+            legacy_code_from_redirect(pasted).unwrap(),
+            "M.C531_BAY.2.U.abc-123_XYZ"
+        );
+    }
+
+    #[test]
+    fn reads_a_code_from_a_bare_query_string() {
+        assert_eq!(legacy_code_from_redirect("code=abc.123").unwrap(), "abc.123");
+    }
+
+    #[test]
+    fn accepts_a_bare_code() {
+        assert_eq!(legacy_code_from_redirect("  abc.123  ").unwrap(), "abc.123");
+    }
+
+    #[test]
+    fn stops_at_a_fragment() {
+        let pasted = "https://login.live.com/oauth20_desktop.srf?code=abc#frag";
+        assert_eq!(legacy_code_from_redirect(pasted).unwrap(), "abc");
+    }
+
+    #[test]
+    fn does_not_mistake_device_code_for_code() {
+        // `device_code` must not answer a lookup for `code`.
+        let pasted = "https://example.test/cb?device_code=zzz&code=real";
+        assert_eq!(legacy_code_from_redirect(pasted).unwrap(), "real");
+    }
+
+    #[test]
+    fn surfaces_microsoft_errors() {
+        let pasted =
+            "https://login.live.com/oauth20_desktop.srf?error=access_denied&error_description=Bye";
+        let error = legacy_code_from_redirect(pasted).unwrap_err().to_string();
+        assert!(error.contains("access_denied"), "got: {error}");
+    }
+
+    #[test]
+    fn rejects_a_url_without_a_code() {
+        assert!(legacy_code_from_redirect("https://login.live.com/oauth20_desktop.srf").is_err());
+        assert!(legacy_code_from_redirect("").is_err());
+    }
+
+    #[test]
+    fn tenant_and_prefixes_are_unchanged() {
+        assert_eq!(TENANT, "consumers");
+        assert_eq!(TicketKind::Modern.prefix(), "d=");
+        assert_eq!(TicketKind::Legacy.prefix(), "t=");
+        assert!(legacy_sign_in_url().contains("client_id=00000000402b5328"));
+    }
 }

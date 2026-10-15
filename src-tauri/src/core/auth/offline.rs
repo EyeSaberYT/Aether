@@ -35,5 +35,6 @@ pub fn create(username: &str) -> Result<Account> {
         expires_at: i64::MAX,
         refresh_token: None,
         skin_url: None,
+        legacy_auth: false,
     })
 }

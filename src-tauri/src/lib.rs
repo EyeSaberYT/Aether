@@ -60,6 +60,8 @@ pub fn run() {
             commands::auth::auth_accounts,
             commands::auth::auth_current,
             commands::auth::auth_login_microsoft,
+            commands::auth::auth_login_microsoft_legacy,
+            commands::auth::auth_legacy_url,
             commands::auth::auth_login_offline,
             commands::auth::auth_logout,
             commands::auth::auth_set_active,
