@@ -24,7 +24,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(paths: AppPaths) -> Result<Arc<Self>> {
+    pub fn new(paths: AppPaths) -> Result<Self> {
         paths.ensure()?;
 
         let settings = Settings::load(&paths)?;
@@ -40,14 +40,14 @@ impl AppState {
             .build()
             .map_err(crate::error::AetherError::from)?;
 
-        Ok(Arc::new(Self {
+        Ok(Self {
             http,
             paths,
             settings: RwLock::new(settings),
             instances: RwLock::new(instances),
             accounts: RwLock::new(accounts),
             running: RwLock::new(vec![]),
-        }))
+        })
     }
 
     /// Current Modrinth base url, honouring user settings.

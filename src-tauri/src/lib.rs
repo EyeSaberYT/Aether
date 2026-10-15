@@ -13,8 +13,6 @@ pub mod core;
 pub mod error;
 pub mod state;
 
-use std::sync::Arc;
-
 use tauri::Manager;
 
 use crate::core::paths::AppPaths;
@@ -133,4 +131,4 @@ pub fn paths() -> AppPaths {
 
 /// Re-export for integration tests.
 pub use state::AppState as LauncherState;
-pub type SharedState = Arc<state::AppState>;
+pub type SharedState = state::AppState;
