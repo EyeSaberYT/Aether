@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Aether",
+  "version": "0.1.0",
+  "identifier": "dev.aether.launcher",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Aether",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 940,
+        "minHeight": 620,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "theme": "Dark",
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://cdn.modrinth.com https://*.modrinth.com https://textures.minecraft.net https://crafatar.com data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https://api.modrinth.com https://cdn.modrinth.com https://launchermeta.mojang.com https://piston-meta.mojang.com https://resources.download.minecraft.net https://meta.fabricmc.net https://meta.quiltmc.org https://maven.neoforged.net https://maven.minecraftforge.net https://api.minecraftservices.com; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Game",
+    "shortDescription": "A modern, open-source Minecraft launcher",
+    "longDescription": "Aether is a clean, fast, ad-free Minecraft launcher with first-class Modrinth integration, instance management and modpack support.",
+    "copyright": "MIT Licensed",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [],
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
+  }
+}

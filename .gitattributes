@@ -1,0 +1,20 @@
+# Normalise line endings to LF in the repository.
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+
+# Keep lockfiles as-is
+Cargo.lock text
+package-lock.json text
+
+# Shell scripts on Windows helpers
+*.ps1 text eol=crlf
+*.bat text eol=crlf

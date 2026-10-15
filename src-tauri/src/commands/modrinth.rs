@@ -1,0 +1,580 @@
+//! Modrinth browsing, installation and update commands.
+
+use std::path::PathBuf;
+
+use tauri::{AppHandle, State};
+
+use crate::api::modrinth::{ModrinthClient, Project, ResolvedFile, SearchFilters, SearchResponse, Tag, Version};
+use crate::core::download::{download_many, DownloadSpec, Progress, ProgressSink};
+use crate::core::instance::{content_dir, game_dir, Instance, InstalledProject, LoaderKind};
+use crate::core::modpack;
+use crate::core::{java, minecraft::loader};
+use crate::error::{AetherError, Result};
+use crate::state::AppState;
+
+async fn client(state: &AppState) -> ModrinthClient {
+    ModrinthClient::new(state.http.clone(), state.modrinth_base().await)
+}
+
+// ---------------------------------------------------------------------------
+// Browsing
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn modrinth_search(
+    state: State<'_, AppState>,
+    filters: SearchFilters,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<SearchResponse> {
+    client(&state)
+        .await
+        .search(&filters, limit.unwrap_or(20), offset.unwrap_or(0))
+        .await
+}
+
+#[tauri::command]
+pub async fn modrinth_project(state: State<'_, AppState>, id: String) -> Result<Project> {
+    client(&state).await.project(&id).await
+}
+
+#[tauri::command]
+pub async fn modrinth_projects(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<Vec<Project>> {
+    client(&state).await.projects(&ids).await
+}
+
+#[tauri::command]
+pub async fn modrinth_versions(
+    state: State<'_, AppState>,
+    project_id: String,
+    game_version: Option<String>,
+    loader: Option<String>,
+) -> Result<Vec<Version>> {
+    let game_versions = game_version.filter(|v| !v.is_empty()).into_iter().collect::<Vec<_>>();
+    let loaders = loader.filter(|v| !v.is_empty()).into_iter().collect::<Vec<_>>();
+    client(&state)
+        .await
+        .versions(&project_id, &game_versions, &loaders)
+        .await
+}
+
+/// Loader + version tags for the Discover filters.
+#[tauri::command]
+pub async fn modrinth_tags(state: State<'_, AppState>, kind: String) -> Result<Vec<Tag>> {
+    client(&state).await.tags(&kind).await
+}
+
+// ---------------------------------------------------------------------------
+// Installation
+// ---------------------------------------------------------------------------
+
+/// Which loader string to send to Modrinth for an instance.
+fn loader_query(instance: &Instance, project_type: &str) -> Option<String> {
+    // Resource packs and shaders aren't loader-specific.
+    if matches!(project_type, "resourcepack" | "shader") {
+        return None;
+    }
+    match instance.loader {
+        LoaderKind::Vanilla => None,
+        kind => Some(kind.modrinth_name().to_string()),
+    }
+}
+
+/// Pick the best version for an instance: pinned, else newest compatible.
+async fn resolve_version(
+    client: &ModrinthClient,
+    project_id: &str,
+    project_type: &str,
+    instance: &Instance,
+    version_id: Option<String>,
+) -> Result<Version> {
+    if let Some(id) = version_id {
+        return client.version(&id).await;
+    }
+
+    let game_versions = vec![instance.game_version.clone()];
+    let loaders = loader_query(instance, project_type)
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let mut versions = client
+        .versions(project_id, &game_versions, &loaders)
+        .await?;
+
+    if versions.is_empty() && !loaders.is_empty() {
+        // Some projects aren't tagged with the loader; retry without it.
+        versions = client.versions(project_id, &game_versions, &[]).await?;
+    }
+    if versions.is_empty() {
+        versions = client.versions(project_id, &[], &[]).await?;
+    }
+
+    versions
+        .into_iter()
+        .next()
+        .ok_or_else(|| AetherError::msg("No compatible version of that project was found."))
+}
+
+/// Download a set of resolved files into their correct content folders and
+/// record them against the instance.
+async fn install_resolved(
+    state: &AppState,
+    app: &AppHandle,
+    instance_id: &str,
+    resolved: Vec<ResolvedFile>,
+    replace_project: bool,
+) -> Result<Vec<InstalledProject>> {
+    let (_, root) = {
+        let store = state.instances.read().await;
+        let instance = store.get(instance_id)?.clone();
+        let root = game_dir(&state.paths, &instance);
+        (instance, root)
+    };
+
+    let concurrency = state.settings.read().await.concurrent_downloads;
+    let sink: ProgressSink = state.sink(app);
+
+    let mut specs = vec![];
+    let mut records: Vec<InstalledProject> = vec![];
+
+    for file in &resolved {
+        let folder = content_dir(&root, &file.project_type);
+        std::fs::create_dir_all(&folder)?;
+        let dest = folder.join(&file.filename);
+
+        let mut spec = DownloadSpec::new(file.url.clone(), &dest)
+            .with_size(file.size)
+            .with_label(file.title.clone());
+        if let Some(sha1) = &file.sha1 {
+            spec = spec.with_sha1(sha1.clone());
+        }
+        specs.push(spec);
+
+        records.push(InstalledProject {
+            project_id: file.project_id.clone(),
+            version_id: file.version_id.clone(),
+            title: file.title.clone(),
+            icon_url: file.icon_url.clone(),
+            project_type: file.project_type.clone(),
+            files: vec![file.filename.clone()],
+            installed_at: Some(chrono::Utc::now().to_rfc3339()),
+        });
+    }
+
+    sink(Progress::new(
+        "install",
+        format!(
+            "Installing {} file{}…",
+            specs.len(),
+            if specs.len() == 1 { "" } else { "s" }
+        ),
+    ));
+
+    download_many(state.http.clone(), specs, concurrency, "install", sink.clone()).await?;
+
+    // Persist the new tracked content, removing stale entries for replaced projects.
+    {
+        let mut store = state.instances.write().await;
+        let entry = store.get_mut(instance_id)?;
+        for record in &records {
+            // Remove old files belonging to this project when updating.
+            if replace_project {
+                if let Some(previous) = entry
+                    .installed_projects
+                    .iter()
+                    .position(|p| p.project_id == record.project_id)
+                {
+                    let old = entry.installed_projects.remove(previous);
+                    for file in old.files {
+                        let path = content_dir(&root, &old.project_type).join(file);
+                        let _ = std::fs::remove_file(path);
+                    }
+                }
+            }
+            entry
+                .installed_projects
+                .retain(|p| !(p.project_id == record.project_id && p.version_id == record.version_id));
+            entry.installed_projects.push(record.clone());
+        }
+        store.persist(&state.paths, instance_id)?;
+    }
+
+    sink(Progress {
+        stage: "install".into(),
+        label: "Installation complete".into(),
+        current: 1,
+        total: 1,
+        files_done: 1,
+        files_total: 1,
+        finished: true,
+    });
+
+    Ok(records)
+}
+
+/// Install a project (and its required dependencies) into an instance.
+#[tauri::command]
+pub async fn modrinth_install(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+    project_id: String,
+    version_id: Option<String>,
+) -> Result<Vec<InstalledProject>> {
+    let client = client(&state).await;
+    let project = client.project(&project_id).await?;
+
+    if project.project_type == "modpack" {
+        return Err(AetherError::msg(
+            "Modpacks create their own instance — use the pack installer instead.",
+        ));
+    }
+
+    let instance = state.instances.read().await.get(&instance_id)?.clone();
+    let version = resolve_version(
+        &client,
+        &project_id,
+        &project.project_type,
+        &instance,
+        version_id,
+    )
+    .await?;
+
+    // Primary file first, then required dependencies (deduplicated).
+    let mut resolved = vec![client.primary_file(&version).await?];
+
+    let loader_name = instance.loader.modrinth_name().to_string();
+    let dependencies = client
+        .resolve_dependencies(&version, &loader_name, &instance.game_version, 4)
+        .await
+        .unwrap_or_default();
+
+    let already_installed: Vec<String> = instance
+        .installed_projects
+        .iter()
+        .map(|p| p.project_id.clone())
+        .collect();
+    for dependency in dependencies {
+        if dependency.project_id != project_id && !already_installed.contains(&dependency.project_id) {
+            resolved.push(dependency);
+        }
+    }
+
+    install_resolved(&state, &app, &instance_id, resolved, true).await
+}
+
+/// Install a Modrinth modpack as a brand new instance.
+#[tauri::command]
+pub async fn modrinth_install_modpack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    project_id: String,
+    version_id: Option<String>,
+    name: Option<String>,
+) -> Result<Instance> {
+    let client = client(&state).await;
+    let project = client.project(&project_id).await?;
+
+    // Modpack versions aren't filtered by an existing instance's loader/version,
+    // so just take the pinned version or the newest one.
+    let version = match version_id {
+        Some(id) => client.version(&id).await?,
+        None => client
+            .versions(&project_id, &[], &[])
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| AetherError::msg("That modpack has no published versions."))?,
+    };
+    let file = client.primary_file(&version).await?;
+
+    // Download the .mrpack into the cache first.
+    let pack_path = state
+        .paths
+        .cache_dir()
+        .join(format!("{}.mrpack", file.filename.replace('/', "_")));
+
+    download_many(
+        state.http.clone(),
+        vec![DownloadSpec::new(file.url.clone(), &pack_path)
+            .with_sha1(file.sha1.clone().unwrap_or_default())
+            .with_size(file.size)
+            .with_label("modpack")],
+        1,
+        "modpack",
+        state.sink(&app),
+    )
+    .await?;
+
+    let index = modpack::read_index(&pack_path)?;
+    let (loader, loader_version) = index.loader_info();
+    let game_version = index.game_version();
+
+    let mut instance = Instance::new(
+        name.unwrap_or_else(|| project.title.clone()),
+        &game_version,
+        loader,
+    );
+    instance.icon = project.icon_url.clone();
+    instance.loader_version = loader_version.clone();
+    instance.notes = Some(project.description.clone());
+
+    let dir = game_dir(&state.paths, &instance);
+    std::fs::create_dir_all(&dir)?;
+
+    // Install the loader, then the pack contents.
+    if let Some(loader_version) = loader_version.as_deref() {
+        if loader != LoaderKind::Vanilla {
+            let java_path = match loader {
+                LoaderKind::Forge | LoaderKind::NeoForge => java::detect(&state.paths, None, 17)
+                    .await
+                    .map(|r| r.as_path())
+                    .unwrap_or_else(|| PathBuf::from("java")),
+                _ => PathBuf::from("java"),
+            };
+            loader::install_loader(
+                &state.http,
+                &state.paths,
+                &dir,
+                loader,
+                &game_version,
+                loader_version,
+                &java_path,
+                state.sink(&app),
+            )
+            .await?;
+        }
+    }
+
+    let concurrency = state.settings.read().await.concurrent_downloads;
+    let mut projects = modpack::install(
+        &state.http,
+        &pack_path,
+        &dir,
+        concurrency,
+        state.sink(&app),
+    )
+    .await?;
+
+    // Remember the pack project itself so update checks can see it.
+    projects.push(InstalledProject {
+        project_id: project.id.clone(),
+        version_id: version.id.clone(),
+        title: project.title.clone(),
+        icon_url: project.icon_url.clone(),
+        project_type: "modpack".into(),
+        files: vec![],
+        installed_at: Some(chrono::Utc::now().to_rfc3339()),
+    });
+    instance.installed_projects = projects;
+
+    {
+        let mut store = state.instances.write().await;
+        store.instances.push(instance.clone());
+        store.persist(&state.paths, &instance.id)?;
+    }
+    Ok(instance)
+}
+
+// ---------------------------------------------------------------------------
+// Updates
+// ---------------------------------------------------------------------------
+
+/// An available update for one installed project.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInfo {
+    pub project_id: String,
+    pub title: String,
+    pub icon_url: Option<String>,
+    pub current_version_id: String,
+    pub latest_version_id: String,
+    pub latest_version_name: String,
+    pub changelog: Option<String>,
+    pub project_type: String,
+}
+
+/// Check every tracked project in an instance for a newer compatible version.
+#[tauri::command]
+pub async fn modrinth_check_updates(
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<Vec<UpdateInfo>> {
+    check_updates(&state, &instance_id).await
+}
+
+/// Shared implementation so other commands can call it without going through
+/// the Tauri command wrapper.
+async fn check_updates(state: &AppState, instance_id: &str) -> Result<Vec<UpdateInfo>> {
+    let instance = state.instances.read().await.get(instance_id)?.clone();
+    let client = client(state).await;
+
+    let mut updates = vec![];
+    for installed in &instance.installed_projects {
+        if installed.project_type == "modpack" {
+            // Re-check the pack project itself for a newer version.
+            let Ok(project) = client.project(&installed.project_id).await else {
+                continue;
+            };
+            let Ok(mut versions) = client.versions(&installed.project_id, &[], &[]).await else {
+                continue;
+            };
+            if let Some(latest) = versions.drain(..).next() {
+                if latest.id != installed.version_id {
+                    updates.push(UpdateInfo {
+                        project_id: installed.project_id.clone(),
+                        title: project.title.clone(),
+                        icon_url: project.icon_url.clone(),
+                        current_version_id: installed.version_id.clone(),
+                        latest_version_id: latest.id.clone(),
+                        latest_version_name: latest.version_number.clone(),
+                        changelog: latest.changelog.clone(),
+                        project_type: installed.project_type.clone(),
+                    });
+                }
+            }
+            continue;
+        }
+
+        let game_versions = vec![instance.game_version.clone()];
+        let loaders = loader_query(&instance, &installed.project_type)
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        let Ok(mut versions) = client
+            .versions(&installed.project_id, &game_versions, &loaders)
+            .await
+        else {
+            continue;
+        };
+
+        let Some(latest) = versions.drain(..).next() else {
+            continue;
+        };
+        if latest.id == installed.version_id {
+            continue;
+        }
+
+        let title = client
+            .project(&installed.project_id)
+            .await
+            .map(|p| p.title)
+            .unwrap_or_else(|_| installed.title.clone());
+
+        updates.push(UpdateInfo {
+            project_id: installed.project_id.clone(),
+            title,
+            icon_url: installed.icon_url.clone(),
+            current_version_id: installed.version_id.clone(),
+            latest_version_id: latest.id.clone(),
+            latest_version_name: latest.version_number.clone(),
+            changelog: latest.changelog.clone(),
+            project_type: installed.project_type.clone(),
+        });
+    }
+
+    Ok(updates)
+}
+
+/// Apply a single update by reinstalling the newest compatible version.
+#[tauri::command]
+pub async fn modrinth_apply_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+    project_id: String,
+    version_id: String,
+) -> Result<()> {
+    let client = client(&state).await;
+    let version = client.version(&version_id).await?;
+    let file = client.primary_file(&version).await?;
+
+    let _ = &project_id;
+    install_resolved(&state, &app, &instance_id, vec![file], true).await?;
+    Ok(())
+}
+
+/// Update every outdated project in an instance.
+#[tauri::command]
+pub async fn modrinth_update_all(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance_id: String,
+) -> Result<usize> {
+    let updates = check_updates(&state, &instance_id).await?;
+    let count = updates.len();
+    for update in updates {
+        let client = client(&state).await;
+        let version = client.version(&update.latest_version_id).await?;
+        let file = client.primary_file(&version).await?;
+        install_resolved(&state, &app, &instance_id, vec![file], true).await?;
+    }
+    Ok(count)
+}
+
+/// Trigger the loader profile install if it's missing (used before launching).
+pub async fn ensure_loader_installed(
+    app: &AppHandle,
+    state: &AppState,
+    instance: &Instance,
+) -> Result<()> {
+    if instance.loader == LoaderKind::Vanilla {
+        return Ok(());
+    }
+    let Some(loader_version) = instance.loader_version.clone() else {
+        return Err(AetherError::msg(
+            "Choose a loader version for this instance first.",
+        ));
+    };
+    let id = loader::profile_id(instance.loader, &instance.game_version, &loader_version);
+    if loader::is_installed(&state.paths, &id) {
+        return Ok(());
+    }
+
+    let dir = game_dir(&state.paths, instance);
+    let java_path = match instance.loader {
+        LoaderKind::Forge | LoaderKind::NeoForge => java::detect(&state.paths, None, 17)
+            .await
+            .map(|r| r.as_path())
+            .unwrap_or_else(|| PathBuf::from("java")),
+        _ => PathBuf::from("java"),
+    };
+
+    loader::install_loader(
+        &state.http,
+        &state.paths,
+        &dir,
+        instance.loader,
+        &instance.game_version,
+        &loader_version,
+        &java_path,
+        state.sink(app),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Multithreaded dependency preview (used by the "install with dependencies" modal).
+#[tauri::command]
+pub async fn modrinth_dependencies(
+    state: State<'_, AppState>,
+    instance_id: String,
+    version_id: String,
+) -> Result<Vec<ResolvedFile>> {
+    let client = client(&state).await;
+    let instance = state.instances.read().await.get(&instance_id)?.clone();
+    let version = client.version(&version_id).await?;
+
+    Ok(client
+        .resolve_dependencies(
+            &version,
+            instance.loader.modrinth_name(),
+            &instance.game_version,
+            4,
+        )
+        .await
+        .unwrap_or_default())
+}

@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Aether theme tokens.
+ *
+ * The launcher is dark-mode first; every colour is expressed as an HSL triple so
+ * Tailwind can wrap it in `hsl()` and support opacity modifiers.
+ */
+@layer base {
+  :root {
+    --background: 222 22% 7%;
+    --foreground: 210 20% 96%;
+
+    --card: 222 20% 10%;
+    --card-foreground: 210 20% 96%;
+
+    --popover: 222 22% 9%;
+    --popover-foreground: 210 20% 96%;
+
+    --primary: 158 78% 42%;
+    --primary-foreground: 160 60% 6%;
+
+    --secondary: 220 16% 16%;
+    --secondary-foreground: 210 20% 96%;
+
+    --muted: 220 16% 15%;
+    --muted-foreground: 215 14% 62%;
+
+    --accent: 220 16% 18%;
+    --accent-foreground: 210 20% 96%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 14% 18%;
+    --input: 220 14% 20%;
+    --ring: 158 78% 42%;
+
+    --radius: 0.75rem;
+  }
+
+  /* Light mode is opt-in; it keeps the same token names. */
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 222 22% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 22% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 22% 10%;
+
+    --primary: 158 78% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 222 22% 12%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 42%;
+
+    --accent: 210 20% 94%;
+    --accent-foreground: 222 22% 12%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 158 78% 36%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    overflow: hidden;
+  }
+
+  /* Thin, unobtrusive scrollbars that match the theme. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full;
+    background: hsl(var(--border));
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+    background-clip: content-box;
+  }
+
+  /* Don't let users select chrome text, but keep content selectable. */
+  button,
+  nav,
+  [role="tab"] {
+    user-select: none;
+  }
+}
+
+@layer components {
+  /* A subtle animated sheen used while content is loading. */
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+
+  .shimmer::after {
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    content: "";
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--foreground) / 0.06),
+      transparent
+    );
+  }
+
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+}
