@@ -129,12 +129,15 @@ pub async fn ensure_files(
 
     if let Some(client) = version.downloads.get("client") {
         sink(Progress::new("download", "Downloading the Minecraft client…"));
+        let mut spec = DownloadSpec::new(client.url.clone(), &client_jar)
+            .with_size(client.size)
+            .with_label("client.jar");
+        if !client.sha1.is_empty() {
+            spec = spec.with_sha1(client.sha1.clone());
+        }
         download_many(
             http.clone(),
-            vec![DownloadSpec::new(client.url.clone(), &client_jar)
-                .with_sha1(client.sha1.clone())
-                .with_size(client.size)
-                .with_label("client.jar")],
+            vec![spec],
             1,
             "download",
             sink.clone(),
@@ -234,17 +237,14 @@ pub async fn ensure_files(
     // ---- assets -----------------------------------------------------------
     if let Some(index) = &version.asset_index {
         let index_file = paths.assets_dir().join("indexes").join(format!("{}.json", index.id));
-        download_many(
-            http.clone(),
-            vec![DownloadSpec::new(index.url.clone(), &index_file)
-                .with_sha1(index.sha1.clone())
-                .with_size(index.size)
-                .with_label("asset index")],
-            1,
-            "download",
-            sink.clone(),
-        )
-        .await?;
+        let mut spec = DownloadSpec::new(index.url.clone(), &index_file)
+            .with_size(index.size)
+            .with_label("asset index");
+        if !index.sha1.is_empty() {
+            spec = spec.with_sha1(index.sha1.clone());
+        }
+        download_many(http.clone(), vec![spec], 1, "download", sink.clone())
+            .await?;
 
         let index_data: AssetIndexObjects = read_json(&index_file)?.unwrap_or_default();
         let objects_dir = paths.assets_dir().join("objects");

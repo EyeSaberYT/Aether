@@ -291,18 +291,26 @@ pub async fn modrinth_install_modpack(
     };
     let file = client.primary_file(&version).await?;
 
-    // Download the .mrpack into the cache first.
-    let pack_path = state
-        .paths
-        .cache_dir()
-        .join(format!("{}.mrpack", file.filename.replace('/', "_")));
+    // Download the .mrpack into the cache first. Modrinth's file names already
+    // end in `.mrpack`, so only append the extension when it isn't there.
+    let mut base = file.filename.replace('/', "_");
+    if base.to_ascii_lowercase().ends_with(".mrpack") {
+        base.truncate(base.len() - ".mrpack".len());
+    }
+    let pack_path = state.paths.cache_dir().join(format!("{base}.mrpack"));
+
+    let mut spec = DownloadSpec::new(file.url.clone(), &pack_path)
+        .with_size(file.size)
+        .with_label("modpack");
+    // Only verify when a checksum is actually published — an empty digest would
+    // never match and would throw away the pack we just downloaded.
+    if let Some(sha1) = file.sha1.clone().filter(|s| !s.is_empty()) {
+        spec = spec.with_sha1(sha1);
+    }
 
     download_many(
         state.http.clone(),
-        vec![DownloadSpec::new(file.url.clone(), &pack_path)
-            .with_sha1(file.sha1.clone().unwrap_or_default())
-            .with_size(file.size)
-            .with_label("modpack")],
+        vec![spec],
         1,
         "modpack",
         state.sink(&app),

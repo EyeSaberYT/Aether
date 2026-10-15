@@ -111,7 +111,16 @@ impl MrpackIndex {
 
 /// Read `modrinth.index.json` from an `.mrpack` without extracting anything.
 pub fn read_index(pack: &Path) -> Result<MrpackIndex> {
-    let file = std::fs::File::open(pack)?;
+    // The path comes straight from a file dialog, so it may have been moved,
+    // renamed or handed to us as something that isn't a file at all.
+    let file = std::fs::File::open(pack).map_err(|e| {
+        AetherError::msg(format!(
+            "Couldn't open '{}': {e}",
+            pack.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| pack.display().to_string())
+        ))
+    })?;
     let mut archive = zip::ZipArchive::new(file)?;
     let mut entry = archive
         .by_name(INDEX_FILE)
@@ -177,7 +186,12 @@ pub async fn install(
 
 /// Copy `overrides/` and `client-overrides/` out of the archive.
 fn extract_overrides(pack: &Path, game_dir: &Path) -> Result<()> {
-    let file = std::fs::File::open(pack)?;
+    let file = std::fs::File::open(pack).map_err(|e| {
+        AetherError::msg(format!(
+            "Couldn't open the pack archive '{}': {e}",
+            pack.display()
+        ))
+    })?;
     let mut archive = zip::ZipArchive::new(file)?;
 
     for prefix in ["overrides/", "client-overrides/"] {
@@ -193,10 +207,16 @@ fn extract_overrides(pack: &Path, game_dir: &Path) -> Result<()> {
 
             let out_path = game_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
             if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)?;
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    AetherError::msg(format!("Couldn't create {}: {e}", parent.display()))
+                })?;
             }
-            let mut out = std::fs::File::create(&out_path)?;
-            std::io::copy(&mut entry, &mut out)?;
+            let mut out = std::fs::File::create(&out_path).map_err(|e| {
+                AetherError::msg(format!("Couldn't create {}: {e}", out_path.display()))
+            })?;
+            std::io::copy(&mut entry, &mut out).map_err(|e| {
+                AetherError::msg(format!("Couldn't write {}: {e}", out_path.display()))
+            })?;
         }
     }
     Ok(())
