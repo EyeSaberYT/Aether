@@ -268,7 +268,7 @@ pub async fn xbox_chain(
     ms_access_token: &str,
 ) -> Result<(String, i64)> {
     // 3a. Xbox Live user token.
-    let xbl: XblResponse = http
+    let xbl_res = http
         .post(XBL_URL)
         .json(&serde_json::json!({
             "Properties": {
@@ -280,9 +280,19 @@ pub async fn xbox_chain(
             "TokenType": "JWT",
         }))
         .send()
-        .await?
-        .json()
         .await?;
+
+    // Xbox Live returns a non-2xx body with a different shape on failure, so
+    // check the status before decoding (otherwise it surfaces as a confusing
+    // "error decoding response body" network error).
+    if !xbl_res.status().is_success() {
+        let status = xbl_res.status();
+        let body = xbl_res.text().await.unwrap_or_default();
+        return Err(AetherError::Auth(format!(
+            "Xbox Live rejected the Microsoft sign-in (HTTP {status}). {body}"
+        )));
+    }
+    let xbl: XblResponse = xbl_res.json().await?;
 
     let uhs = xbl
         .display_claims
@@ -330,15 +340,35 @@ pub async fn xbox_chain(
     let xsts: XblResponse = xsts_res.json().await?;
 
     // 3c. Minecraft services token.
-    let mc: McTokenResponse = http
+    let mc_res = http
         .post(MC_LOGIN_URL)
         .json(&serde_json::json!({
             "identityToken": format!("XBL3.0 x={uhs};{}", xsts.token),
         }))
         .send()
-        .await?
-        .json()
         .await?;
+
+    // Minecraft services returns a non-2xx body with a different shape on
+    // failure, so check the status before decoding. This is also where a brand
+    // new Azure app registration is rejected until Mojang allow-lists it.
+    if !mc_res.status().is_success() {
+        let status = mc_res.status();
+        let body = mc_res.text().await.unwrap_or_default();
+
+        if body.contains("Invalid app registration") {
+            return Err(AetherError::Auth(
+                "Mojang hasn't approved this launcher's app registration yet, so the final \
+                 Minecraft login step is blocked (HTTP 403, \"Invalid app registration\"). \
+                 The client id must be allow-listed at https://aka.ms/mce-reviewappid before \
+                 online sign-in can work."
+                    .into(),
+            ));
+        }
+        return Err(AetherError::Auth(format!(
+            "Minecraft services rejected the login (HTTP {status}). {body}"
+        )));
+    }
+    let mc: McTokenResponse = mc_res.json().await?;
 
     Ok((mc.access_token, mc.expires_in))
 }
