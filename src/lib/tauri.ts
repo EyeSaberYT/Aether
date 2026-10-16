@@ -169,7 +169,6 @@ export interface Settings {
   keepLauncherOpen: boolean;
   theme: "dark" | "light" | "system";
   modrinthApiUrl: string;
-  microsoftClientId: string;
 }
 
 export interface VersionOption {

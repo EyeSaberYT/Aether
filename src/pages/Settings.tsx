@@ -293,18 +293,6 @@ export function Settings() {
                 onChange={(event) => setDraft({ ...draft, modrinthApiUrl: event.target.value })}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Microsoft client ID</Label>
-              <Input
-                value={draft.microsoftClientId}
-                spellCheck={false}
-                onChange={(event) => setDraft({ ...draft, microsoftClientId: event.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Required for Microsoft sign-in. Register an app in Entra ID and paste its client
-                ID here.
-              </p>
-            </div>
           </div>
         </Card>
 

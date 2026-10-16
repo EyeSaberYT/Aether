@@ -30,8 +30,6 @@ pub struct Settings {
     pub theme: Theme,
     /// Modrinth API base URL (overridable for self-hosted Labrinth).
     pub modrinth_api_url: String,
-    /// Microsoft OAuth client id used for the device-code flow.
-    pub microsoft_client_id: String,
 }
 
 impl Default for Settings {
@@ -54,7 +52,6 @@ impl Default for Settings {
             keep_launcher_open: true,
             theme: Theme::Dark,
             modrinth_api_url: "https://api.modrinth.com/v2".into(),
-            microsoft_client_id: default_client_id(),
         }
     }
 }
@@ -67,16 +64,20 @@ pub enum Theme {
     System,
 }
 
-/// Default Microsoft OAuth client id.
+/// The Microsoft OAuth client id the launcher signs in with.
 ///
-/// This is an Azure "public client" application id. Users who want their own
-/// can override it in Settings or via the `AETHER_MS_CLIENT_ID` env var. See the
-/// README for how to register one (it takes ~2 minutes and is free).
-pub fn default_client_id() -> String {
-    std::env::var("AETHER_MS_CLIENT_ID").unwrap_or_else(|_| {
-        // Aether's Azure app registration (public client, personal accounts).
-        "25257470-05eb-4959-bc32-6b6bdb883bac".to_string()
-    })
+/// This is deliberately a constant rather than a setting. It is *not* a secret:
+/// it is a public-client id, it ships inside the binary, and it is visible in
+/// every OAuth URL the app requests. What matters is that it is not
+/// user-editable, because pointing sign-in at an unregistered app only ever
+/// produces confusing failures.
+///
+/// Fork maintainers can still swap it at build time — `AETHER_MS_CLIENT_ID=<id>
+/// cargo build` bakes their id into the binary. Because it is read with
+/// `option_env!`, that happens at compile time and cannot be changed at runtime.
+pub fn microsoft_client_id() -> &'static str {
+    // Aether's Azure app registration (public client, personal accounts only).
+    option_env!("AETHER_MS_CLIENT_ID").unwrap_or("25257470-05eb-4959-bc32-6b6bdb883bac")
 }
 
 impl Settings {

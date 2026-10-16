@@ -188,16 +188,29 @@ Minecraft authentication has hard requirements, because it relies on the
   `AADSTS650053`.
 - Users sign in with the personal Microsoft account that owns Minecraft.
 
-To use your own app registration instead:
+The built-in Microsoft client id is compiled into the binary, so it is not
+configurable through the UI. It is not a secret (public clients have no client
+secret; the id travels in OAuth requests), but removing user-editability
+prevents accidental misconfiguration. Fork maintainers can override it at build
+time with `AETHER_MS_CLIENT_ID=<id> cargo build` (the value is read via
+`option_env!` and cannot be changed at runtime).
+
+Because a fresh Entra app registration is not allow-listed by Mojang yet,
+Aether also includes a "Sign-in not working? Use browser sign-in" fallback that
+borrows Microsoft's own Minecraft client id, which is already allow-listed. That
+flow finishes on Microsoft's page, so you copy the address bar into Aether; the
+code is exchanged locally with `login.live.com`. Accounts created this way are
+flagged (`Account::legacy_auth`) and refreshed through the same endpoint.
+
+To use your own Entra registration instead:
 
 1. In [Microsoft Entra ID](https://entra.microsoft.com) register a new app.
 2. Under **Authentication** → **Supported account types**, choose
    **Personal Microsoft accounts only**.
 3. On the same page, enable **Allow public client flows** (required for the
    device-code flow — no client secret is used).
-4. Copy the **Application (client) ID** into **Settings → Modrinth &
-   authentication → Microsoft client ID** (or set the `AETHER_MS_CLIENT_ID`
-   environment variable, or change `default_client_id()`).
+4. Rebuild from source with your id: `AETHER_MS_CLIENT_ID=<your-client-id> cargo build`
+   (set it for the `tauri build`/`npm tauri build` step).
 5. New app registrations must be allow-listed by Mojang before
    `api.minecraftservices.com` will accept them; until then the final login step
    returns `Invalid app registration` (HTTP 403). Request access at
