@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
+import { Pagination } from "@/components/common/Pagination";
 import {
   CARD_GRID,
   DEFAULT_VIEW,
@@ -13,7 +14,6 @@ import {
   type ViewMode,
 } from "@/components/common/ViewToggle";
 import { ProjectCard, ProjectCardSkeleton } from "@/components/discover/ProjectCard";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { modrinth } from "@/lib/api";
-import { projectTypeLabel } from "@/lib/format";
+import { loaderLabel, projectTypeLabel } from "@/lib/format";
 import type { ModrinthTag, SearchFilters, SearchHit, SearchResponse } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +40,14 @@ const SORTS = [
 ];
 
 const PAGE_SIZE = 20;
+
+/**
+ * The loaders worth filtering by. Modrinth's `tag/loader` endpoint also lists
+ * long-dead loaders (Rift, Liteloader, modloader) and server software (Paper,
+ * Spigot…) that a client launcher can't use, so the filter is pinned to the
+ * four loaders Aether can actually install.
+ */
+const KNOWN_LOADERS = ["fabric", "quilt", "forge", "neoforge"];
 
 /** How many game versions the filter offers. */
 const MAX_VERSIONS = 50;
@@ -68,10 +76,9 @@ export function Discover() {
 
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [gameVersions, setGameVersions] = useState<string[]>([]);
-  const [loaders, setLoaders] = useState<string[]>([]);
 
   const [storedView, setStoredView] = usePersistentState<ViewMode>(VIEW_KEY, DEFAULT_VIEW);
   // Storage is user-writable, so narrow it before it reaches a branch.
@@ -84,18 +91,15 @@ export function Discover() {
   // Debounced search term so typing doesn't hammer the API.
   const debounced = useDebounced(query, 350);
   const requestId = useRef(0);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Load filter option lists once. These only fill the dropdowns, so a failure
-  // degrades the filters rather than blocking the page.
+  // Load the game-version list once. It only fills a dropdown, so a failure
+  // degrades the filter rather than blocking the page. The loader options are
+  // a fixed list (see KNOWN_LOADERS), so nothing else needs fetching.
   useEffect(() => {
     void (async () => {
       try {
-        const [versionTags, loaderTags] = await Promise.all([
-          modrinth.tags("game_version"),
-          modrinth.tags("loader"),
-        ]);
-        setGameVersions(releaseVersions(versionTags));
-        setLoaders(loaderTags.map((tag) => tag.name));
+        setGameVersions(releaseVersions(await modrinth.tags("game_version")));
       } catch (error) {
         toast.error("Couldn't load search filters", {
           description: error instanceof Error ? error.message : String(error),
@@ -117,19 +121,20 @@ export function Discover() {
   );
 
   const runSearch = useCallback(
-    async (append: boolean) => {
+    async (target: number) => {
       const id = ++requestId.current;
       setLoading(true);
       try {
         const response: SearchResponse = await modrinth.search(
           filters,
           PAGE_SIZE,
-          append ? offset : 0,
+          (target - 1) * PAGE_SIZE,
         );
+        // A newer request superseded this one while it was in flight.
         if (id !== requestId.current) return;
-        setHits((current) => (append ? [...current, ...response.hits] : response.hits));
+        setHits(response.hits);
         setTotal(response.totalHits);
-        setOffset((append ? offset : 0) + response.hits.length);
+        setPage(target);
       } catch (error) {
         if (id === requestId.current) {
           toast.error(error instanceof Error ? error.message : String(error));
@@ -138,15 +143,26 @@ export function Discover() {
         if (id === requestId.current) setLoading(false);
       }
     },
-    [filters, offset],
+    [filters],
   );
 
-  // Re-run whenever the filters change (resetting pagination).
+  // Re-run whenever the filters change (always from the first page).
   useEffect(() => {
-    setOffset(0);
-    void runSearch(false);
+    void runSearch(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
+
+  // Jump to a page and return to the top of the results, the way every
+  // paginated site behaves — without this, clicking "Next" on a long page
+  // leaves you staring at cards that just changed underneath you.
+  const goToPage = useCallback(
+    (target: number) => {
+      void runSearch(target).then(() => {
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    },
+    [runSearch],
+  );
 
   return (
     <div className="mx-auto w-full max-w-6xl px-8 py-8">
@@ -210,9 +226,9 @@ export function Discover() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="any">Any loader</SelectItem>
-                {loaders.map((name) => (
+                {KNOWN_LOADERS.map((name) => (
                   <SelectItem key={name} value={name}>
-                    {name}
+                    {loaderLabel(name)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -235,7 +251,7 @@ export function Discover() {
       </div>
 
       {/* Results */}
-      <div className="mt-6">
+      <div ref={resultsRef} className="mt-6 scroll-mt-8">
         {loading && hits.length === 0 ? (
           <div className={view === "grid" ? CARD_GRID : "space-y-3"}>
             {Array.from({ length: 6 }).map((_, index) => (
@@ -259,13 +275,14 @@ export function Discover() {
                 />
               ))}
             </div>
-            {hits.length < total && (
-              <div className="flex justify-center pt-4">
-                <Button variant="outline" disabled={loading} onClick={() => void runSearch(true)}>
-                  {loading ? "Loading…" : `Load more (${total - hits.length} left)`}
-                </Button>
-              </div>
-            )}
+            <Pagination
+              page={page}
+              pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+              total={total}
+              pageSize={PAGE_SIZE}
+              loading={loading}
+              onChange={goToPage}
+            />
           </>
         )}
       </div>

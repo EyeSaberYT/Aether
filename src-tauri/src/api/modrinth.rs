@@ -268,7 +268,8 @@ impl SearchFilters {
             }
         }
         if let Some(loader) = &self.loader {
-            // Resource packs and shaders are loader-agnostic.
+            // Resource packs and shaders are loader-agnostic; datapacks do
+            // carry loaders (many require Fabric or Forge).
             let applies = matches!(
                 self.project_type.as_deref(),
                 Some("mod") | Some("modpack") | Some("datapack") | None
@@ -680,6 +681,68 @@ mod tests {
         assert_eq!(json["projectId"], "AANobbMI");
         assert!(json.get("project_id").is_none());
         assert!(json.get("displayCategories").is_some());
+    }
+
+    /// Decode a facets string back into groups so assertions read as facets.
+    fn facet_groups(filters: &SearchFilters) -> Vec<Vec<String>> {
+        filters
+            .facets()
+            .map(|json| serde_json::from_str(&json).unwrap())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn facets_group_filters_with_and() {
+        let filters = SearchFilters {
+            query: "sodium".into(),
+            project_type: Some("mod".into()),
+            game_version: Some("1.21.1".into()),
+            loader: Some("fabric".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            facet_groups(&filters),
+            vec![
+                vec!["project_type:mod".to_string()],
+                vec!["versions:1.21.1".to_string()],
+                vec!["categories:fabric".to_string()],
+            ]
+        );
+    }
+
+    /// Resource packs and shaders have no loaders, so the facet must be
+    /// dropped for them rather than filtering every project out. Datapacks
+    /// do carry loaders.
+    #[test]
+    fn loader_facet_only_applies_where_loaders_exist() {
+        let loader_facet = |project_type: &str| {
+            let filters = SearchFilters {
+                project_type: Some(project_type.into()),
+                loader: Some("fabric".into()),
+                ..Default::default()
+            };
+            facet_groups(&filters)
+        };
+
+        assert!(loader_facet("mod").contains(&vec!["categories:fabric".to_string()]));
+        assert!(loader_facet("datapack").contains(&vec!["categories:fabric".to_string()]));
+        assert!(!loader_facet("resourcepack").iter().any(|g| g[0].starts_with("categories:")));
+        assert!(!loader_facet("shader").iter().any(|g| g[0].starts_with("categories:")));
+    }
+
+    /// "Any loader" placeholders must not turn into a facet that matches
+    /// nothing.
+    #[test]
+    fn facets_ignore_empty_and_any_placeholders() {
+        for value in ["", "any"] {
+            let filters = SearchFilters {
+                project_type: Some("mod".into()),
+                game_version: Some(value.into()),
+                loader: Some(value.into()),
+                ..Default::default()
+            };
+            assert_eq!(facet_groups(&filters), vec![vec!["project_type:mod".to_string()]]);
+        }
     }
 
     #[test]
