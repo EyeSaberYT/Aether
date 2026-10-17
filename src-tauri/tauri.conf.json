@@ -34,6 +34,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "category": "Game",
     "shortDescription": "A modern, open-source Minecraft launcher",
     "longDescription": "Aether is a clean, fast, ad-free Minecraft launcher with first-class Modrinth integration, instance management and modpack support.",
