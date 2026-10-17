@@ -11,10 +11,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /** Invoke a backend command, surfacing errors as `Error` objects. */
-export async function invoke<T>(
-  command: string,
-  args?: Record<string, unknown>,
-): Promise<T> {
+export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (!isTauri) {
     throw new Error(
       `Cannot call "${command}": Aether's backend isn't running. Start the app with \`npm run tauri:dev\`.`,
@@ -317,6 +314,7 @@ export interface ModrinthVersion {
 
 export interface ModrinthTag {
   name: string;
+  versionType: string | null;
   projectType: string | null;
   icon: string | null;
 }

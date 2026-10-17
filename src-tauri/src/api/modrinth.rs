@@ -193,7 +193,13 @@ pub struct Dependency {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct Tag {
+    /// Loader and category tags call this `name`; game-version tags call the
+    /// same value `version`, so accept either spelling.
+    #[serde(alias = "version")]
     pub name: String,
+    /// Game-version tags only: `release`, `snapshot`, `alpha` or `beta`.
+    #[serde(default)]
+    pub version_type: Option<String>,
     #[serde(default)]
     pub project_type: Option<String>,
     #[serde(default)]
@@ -671,5 +677,53 @@ mod tests {
             version.dependencies[0].project_id.as_deref(),
             Some("P7dR8mSH")
         );
+    }
+
+    /// `/tag/game_version` calls the value `version` and carries no `name`, so
+    /// requiring `name` made this endpoint fail to deserialize outright.
+    #[test]
+    fn game_version_tags_deserialize_from_the_version_key() {
+        let json = r#"[
+            {
+                "version": "26.3",
+                "version_type": "release",
+                "date": "2026-10-13T12:05:46Z",
+                "major": true
+            },
+            {
+                "version": "26.4-snapshot-4",
+                "version_type": "snapshot",
+                "date": "2026-10-13T12:05:46Z",
+                "major": false
+            }
+        ]"#;
+        let tags: Vec<Tag> = serde_json::from_str(json).unwrap();
+        assert_eq!(tags[0].name, "26.3");
+        assert_eq!(tags[0].version_type.as_deref(), Some("release"));
+        assert_eq!(tags[1].name, "26.4-snapshot-4");
+        assert_eq!(tags[1].version_type.as_deref(), Some("snapshot"));
+    }
+
+    /// The loader and category endpoints keep using `name`, and version_type is
+    /// absent there, so it must stay optional.
+    #[test]
+    fn loader_tags_still_deserialize_from_the_name_key() {
+        let json = r#"[{"name": "fabric", "icon": "<svg/>"}]"#;
+        let tags: Vec<Tag> = serde_json::from_str(json).unwrap();
+        assert_eq!(tags[0].name, "fabric");
+        assert_eq!(tags[0].version_type, None);
+        assert_eq!(tags[0].icon.as_deref(), Some("<svg/>"));
+    }
+
+    #[test]
+    fn tags_serialize_version_type_as_camel_case() {
+        let tags: Vec<Tag> = serde_json::from_str(
+            r#"[{"version": "26.3", "version_type": "release"}]"#,
+        )
+        .unwrap();
+        let json = serde_json::to_value(&tags[0]).unwrap();
+        assert_eq!(json["name"], "26.3");
+        assert_eq!(json["versionType"], "release");
+        assert!(json.get("version_type").is_none());
     }
 }

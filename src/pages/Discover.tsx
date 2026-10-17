@@ -25,7 +25,7 @@ import {
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { modrinth } from "@/lib/api";
 import { projectTypeLabel } from "@/lib/format";
-import type { SearchFilters, SearchHit, SearchResponse } from "@/lib/tauri";
+import type { ModrinthTag, SearchFilters, SearchHit, SearchResponse } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 const PROJECT_TYPES = ["mod", "modpack", "resourcepack", "shader", "datapack"] as const;
@@ -40,6 +40,23 @@ const SORTS = [
 ];
 
 const PAGE_SIZE = 20;
+
+/** How many game versions the filter offers. */
+const MAX_VERSIONS = 50;
+
+/**
+ * Modrinth returns every game version it knows about, and the vast majority of
+ * those are snapshots (about 750, against ~100 releases). A launch target is
+ * almost always a release, so drop the pre-releases and keep the newest
+ * releases, which arrive newest-first.
+ */
+function releaseVersions(tags: ModrinthTag[]): string[] {
+  const releases = tags.filter((tag) => tag.versionType === "release");
+  // If Modrinth ever stops labelling version types, showing everything beats
+  // showing nothing.
+  const usable = releases.length > 0 ? releases : tags;
+  return usable.slice(0, MAX_VERSIONS).map((tag) => tag.name);
+}
 
 /** Modrinth search: type tabs, filters and an infinite-ish result grid. */
 export function Discover() {
@@ -68,16 +85,23 @@ export function Discover() {
   const debounced = useDebounced(query, 350);
   const requestId = useRef(0);
 
-  // Load filter option lists once.
+  // Load filter option lists once. These only fill the dropdowns, so a failure
+  // degrades the filters rather than blocking the page.
   useEffect(() => {
-    void modrinth
-      .tags("game_version")
-      .then((tags) => setGameVersions(tags.map((tag) => tag.name).slice(0, 60)))
-      .catch(() => {});
-    void modrinth
-      .tags("loader")
-      .then((tags) => setLoaders(tags.map((tag) => tag.name)))
-      .catch(() => {});
+    void (async () => {
+      try {
+        const [versionTags, loaderTags] = await Promise.all([
+          modrinth.tags("game_version"),
+          modrinth.tags("loader"),
+        ]);
+        setGameVersions(releaseVersions(versionTags));
+        setLoaders(loaderTags.map((tag) => tag.name));
+      } catch (error) {
+        toast.error("Couldn't load search filters", {
+          description: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
   }, []);
 
   const filters = useMemo<SearchFilters>(
