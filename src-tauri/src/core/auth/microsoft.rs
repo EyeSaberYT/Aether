@@ -181,6 +181,14 @@ struct McTokenResponse {
 struct McProfile {
     id: String,
     name: String,
+    #[serde(default)]
+    skins: Vec<McSkin>,
+}
+
+#[derive(Deserialize)]
+struct McSkin {
+    state: String,
+    url: String,
 }
 
 #[derive(Deserialize)]
@@ -434,7 +442,7 @@ pub async fn xbox_chain(
 pub async fn fetch_profile(
     http: &reqwest::Client,
     mc_access_token: &str,
-) -> Result<(String, String)> {
+) -> Result<(String, String, Option<String>)> {
     let res = http
         .get(MC_PROFILE_URL)
         .bearer_auth(mc_access_token)
@@ -453,7 +461,48 @@ pub async fn fetch_profile(
     }
 
     let profile: McProfile = res.json().await?;
-    Ok((dashify_uuid(&profile.id), profile.name))
+    let skin_url = profile
+        .skins
+        .iter()
+        .find(|s| s.state == "ACTIVE")
+        .map(|s| s.url.as_str())
+        .or_else(|| profile.skins.first().map(|s| s.url.as_str()))
+        .map(normalize_texture_url);
+    Ok((dashify_uuid(&profile.id), profile.name, skin_url))
+}
+
+/// Mojang hands back `http://textures.minecraft.net/…`, but the app's CSP only
+/// allows `https://` for that host, so normalise before the url is stored or
+/// handed to the webview.
+fn normalize_texture_url(url: &str) -> String {
+    match url.strip_prefix("http://textures.minecraft.net") {
+        Some(rest) => format!("https://textures.minecraft.net{rest}"),
+        None => url.to_string(),
+    }
+}
+
+/// Look up a stored account's skin, back-filling it when missing.
+///
+/// Accounts saved by builds that didn't record a texture url (or signed in
+/// while the profile still reported none) keep showing a placeholder until this
+/// runs, so the accounts command fills the gap on read. Deliberately best
+/// effort: a missing skin never breaks sign-in, and it is refreshed again on
+/// the next token refresh.
+pub async fn skin_for_account(
+    http: &reqwest::Client,
+    account: &Account,
+) -> Result<Option<String>> {
+    if let Some(skin) = account.skin_url.as_ref() {
+        return Ok(Some(skin.clone()));
+    }
+    // Offline profiles have no Mojang profile, and an expired token would only
+    // produce a 401 — the next refresh covers both cases.
+    if account.kind == AccountKind::Offline || account.is_expired() {
+        return Ok(None);
+    }
+
+    let (_, _, skin) = fetch_profile(http, &account.access_token).await?;
+    Ok(skin)
 }
 
 /// Confirm the account actually owns the game.
@@ -503,7 +552,7 @@ where
 
     let (mc_token, expires_in) = xbox_chain(http, &ms_token, TicketKind::Modern).await?;
     check_entitlements(http, &mc_token).await.ok();
-    let (uuid, name) = fetch_profile(http, &mc_token).await?;
+    let (uuid, name, skin_url) = fetch_profile(http, &mc_token).await?;
 
     Ok(Account {
         kind: AccountKind::Microsoft,
@@ -512,7 +561,7 @@ where
         access_token: mc_token,
         expires_at: chrono::Utc::now().timestamp() + expires_in,
         refresh_token: refresh,
-        skin_url: None,
+        skin_url,
         legacy_auth: false,
     })
 }
@@ -530,7 +579,7 @@ pub async fn refresh_account(
 
     let (ms_token, new_refresh, _) = refresh_token(http, client_id, &refresh).await?;
     let (mc_token, expires_in) = xbox_chain(http, &ms_token, TicketKind::Modern).await?;
-    let (uuid, name) = fetch_profile(http, &mc_token).await?;
+    let (uuid, name, skin_url) = fetch_profile(http, &mc_token).await?;
 
     Ok(Account {
         kind: AccountKind::Microsoft,
@@ -539,7 +588,7 @@ pub async fn refresh_account(
         access_token: mc_token,
         expires_at: chrono::Utc::now().timestamp() + expires_in,
         refresh_token: new_refresh.or(account.refresh_token.clone()),
-        skin_url: account.skin_url.clone(),
+        skin_url: skin_url.or_else(|| account.skin_url.clone()),
         legacy_auth: false,
     })
 }
@@ -577,7 +626,7 @@ pub async fn complete_legacy_login(
     let (mc_token, expires_in) =
         xbox_chain(http, &token.access_token, TicketKind::Legacy).await?;
     check_entitlements(http, &mc_token).await.ok();
-    let (uuid, name) = fetch_profile(http, &mc_token).await?;
+    let (uuid, name, skin_url) = fetch_profile(http, &mc_token).await?;
 
     Ok(Account {
         kind: AccountKind::Microsoft,
@@ -586,7 +635,7 @@ pub async fn complete_legacy_login(
         access_token: mc_token,
         expires_at: chrono::Utc::now().timestamp() + expires_in,
         refresh_token: token.refresh_token,
-        skin_url: None,
+        skin_url,
         legacy_auth: true,
     })
 }
@@ -624,7 +673,7 @@ pub async fn refresh_legacy_account(
     let token: TokenResponse = res.json().await?;
     let (mc_token, expires_in) =
         xbox_chain(http, &token.access_token, TicketKind::Legacy).await?;
-    let (uuid, name) = fetch_profile(http, &mc_token).await?;
+    let (uuid, name, skin_url) = fetch_profile(http, &mc_token).await?;
 
     Ok(Account {
         kind: AccountKind::Microsoft,
@@ -633,7 +682,8 @@ pub async fn refresh_legacy_account(
         access_token: mc_token,
         expires_at: chrono::Utc::now().timestamp() + expires_in,
         refresh_token: token.refresh_token.or(account.refresh_token.clone()),
-        skin_url: account.skin_url.clone(),
+        // Keep the previous texture if this refresh didn't return one.
+        skin_url: skin_url.or_else(|| account.skin_url.clone()),
         legacy_auth: true,
     })
 }
@@ -769,5 +819,23 @@ mod tests {
         assert_eq!(TicketKind::Modern.prefix(), "d=");
         assert_eq!(TicketKind::Legacy.prefix(), "t=");
         assert!(legacy_sign_in_url().contains("client_id=00000000402b5328"));
+    }
+
+    #[test]
+    fn texture_urls_are_upgraded_to_https() {
+        // The webview's CSP only allows https for this host.
+        assert_eq!(
+            normalize_texture_url("http://textures.minecraft.net/texture/abc"),
+            "https://textures.minecraft.net/texture/abc"
+        );
+        assert_eq!(
+            normalize_texture_url("https://textures.minecraft.net/texture/abc"),
+            "https://textures.minecraft.net/texture/abc"
+        );
+        // Anything else is left exactly as received.
+        assert_eq!(
+            normalize_texture_url("http://example.test/x"),
+            "http://example.test/x"
+        );
     }
 }

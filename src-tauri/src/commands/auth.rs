@@ -33,8 +33,50 @@ fn public(store: &AccountStore) -> Vec<PublicAccount> {
         .collect()
 }
 
+/// Back-fill skin urls that older builds (or an earlier sign-in) never saved.
+///
+/// Best effort and time-boxed: a slow or offline network must never stall the
+/// account list, and a failed lookup simply keeps the placeholder until the next
+/// token refresh supplies the texture.
+async fn fill_missing_skins(state: &AppState) {
+    let pending: Vec<Account> = {
+        let store = state.accounts.read().await;
+        store
+            .accounts
+            .iter()
+            .filter(|account| account.skin_url.is_none())
+            .cloned()
+            .collect()
+    };
+    if pending.is_empty() {
+        return;
+    }
+
+    for account in pending {
+        let skin = tokio::time::timeout(
+            std::time::Duration::from_secs(4),
+            microsoft::skin_for_account(&state.http, &account),
+        )
+        .await
+        .ok()
+        .and_then(|outcome| outcome.ok())
+        .flatten();
+
+        let Some(skin) = skin else { continue };
+
+        let mut store = state.accounts.write().await;
+        if let Some(existing) = store.accounts.iter_mut().find(|a| a.uuid == account.uuid) {
+            existing.skin_url = Some(skin);
+            // A failed write only costs one extra lookup next launch, so it
+            // must not fail the account list over a cosmetic field.
+            let _ = store.save(&state.paths);
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn auth_accounts(state: State<'_, AppState>) -> Result<Vec<PublicAccount>> {
+    fill_missing_skins(state.inner()).await;
     let store = state.accounts.read().await;
     Ok(public(&store))
 }
