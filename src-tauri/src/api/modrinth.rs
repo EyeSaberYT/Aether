@@ -13,6 +13,17 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AetherError, Result};
 
 // ---------------------------------------------------------------------------
+// Batch limits
+// ---------------------------------------------------------------------------
+
+/// Hashes per `/version_files` request. Comfortably under Labrinth's limit
+/// and few enough requests that a 300-mod pack stays well inside rate limits.
+const HASH_BATCH: usize = 100;
+
+/// Ids per `/projects` request.
+const PROJECT_BATCH: usize = 50;
+
+// ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
 
@@ -62,7 +73,7 @@ pub struct SearchHit {
     pub gallery: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct Project {
     pub id: String,
@@ -135,7 +146,7 @@ pub struct License {
     pub url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all(serialize = "camelCase", deserialize = "snake_case"))]
 pub struct Version {
     pub id: String,
@@ -416,6 +427,37 @@ impl ModrinthClient {
             return Err(AetherError::msg("Modrinth couldn't match those files."));
         }
         Ok(res.json().await?)
+    }
+
+    /// `POST /version_files` for many hashes at once, split into batches.
+    ///
+    /// Any failed batch fails the whole call: a partial answer would be
+    /// indistinguishable from "these files aren't on Modrinth", and callers
+    /// need to tell those two situations apart.
+    pub async fn versions_from_hashes_batched(
+        &self,
+        hashes: &[String],
+    ) -> Result<HashMap<String, Version>> {
+        let mut out = HashMap::new();
+        for chunk in hashes.chunks(HASH_BATCH) {
+            out.extend(self.versions_from_hashes(chunk).await?);
+        }
+        Ok(out)
+    }
+
+    /// `GET /projects` for many ids at once, split into batches.
+    ///
+    /// Titles and icons are cosmetic, so a failed batch is skipped rather
+    /// than failing the call — callers fall back to what they already know.
+    pub async fn projects_batched(&self, ids: &[String]) -> Vec<Project> {
+        let mut out = Vec::new();
+        for chunk in ids.chunks(PROJECT_BATCH) {
+            match self.projects(chunk).await {
+                Ok(projects) => out.extend(projects),
+                Err(error) => log::debug!("project title lookup failed: {error}"),
+            }
+        }
+        out
     }
 
     /// `POST /version_files/update` – ask Modrinth for the newest compatible

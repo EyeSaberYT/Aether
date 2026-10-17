@@ -184,6 +184,53 @@ impl Instance {
             installed_projects: vec![],
         }
     }
+
+    /// Drop tracking records whose project id could never resolve.
+    ///
+    /// Early builds recorded a modpack's free-form `versionId` from the
+    /// mrpack index (something like `26.1.2-1.1`) as if it were a Modrinth
+    /// project id, so every file in the pack resolved to one junk record
+    /// titled with that string. Modrinth ids are base62, so anything else
+    /// can never resolve; the junk record's file list is salvaged onto the
+    /// pack's own record so the content keeps its attribution.
+    ///
+    /// Returns whether anything changed.
+    pub fn prune_invalid_projects(&mut self) -> bool {
+        let valid = |id: &str| {
+            id.is_empty()
+                || id.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        };
+
+        let mut salvaged: Vec<String> = vec![];
+        self.installed_projects.retain_mut(|record| {
+            if valid(&record.project_id) {
+                return true;
+            }
+            salvaged.append(&mut record.files);
+            false
+        });
+
+        if salvaged.is_empty() {
+            return false;
+        }
+
+        // The pack record is the only honest owner of those files. Without
+        // one the files are simply untracked: they stay on disk and the
+        // content list falls back to their filenames.
+        if let Some(pack) = self
+            .installed_projects
+            .iter_mut()
+            .find(|record| record.project_type == "modpack")
+        {
+            for file in salvaged {
+                if !pack.files.contains(&file) {
+                    pack.files.push(file);
+                }
+            }
+        }
+        true
+    }
 }
 
 /// Generate a human-friendly, filesystem-safe instance id.
@@ -224,6 +271,15 @@ impl InstanceStore {
     pub fn load(paths: &AppPaths) -> Result<Self> {
         let mut store: InstanceStore = read_json(&paths.instances_index())?.unwrap_or_default();
         store.sort();
+
+        // Repair tracking records written by builds with the modpack id bug.
+        let mut repaired = false;
+        for instance in &mut store.instances {
+            repaired |= instance.prune_invalid_projects();
+        }
+        if repaired {
+            store.save(paths)?;
+        }
         Ok(store)
     }
 
@@ -277,7 +333,8 @@ impl InstanceStore {
                     continue;
                 }
                 let meta = paths.instance_file(&id);
-                if let Some(instance) = read_json::<Instance>(&meta)? {
+                if let Some(mut instance) = read_json::<Instance>(&meta)? {
+                    instance.prune_invalid_projects();
                     self.instances.push(instance);
                 }
             }
@@ -307,5 +364,77 @@ pub fn content_dir(game_dir: &Path, project_type: &str) -> PathBuf {
         "datapack" => game_dir.join("datapacks"),
         "world" => game_dir.join("saves"),
         _ => game_dir.join("mods"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(project_id: &str, project_type: &str, files: &[&str]) -> InstalledProject {
+        InstalledProject {
+            project_id: project_id.into(),
+            version_id: format!("{project_id}-v"),
+            title: format!("title {project_id}"),
+            icon_url: None,
+            project_type: project_type.into(),
+            files: files.iter().map(|file| file.to_string()).collect(),
+            installed_at: None,
+        }
+    }
+
+    fn instance_with(records: Vec<InstalledProject>) -> Instance {
+        let mut instance = Instance::new("Pack", "1.21", LoaderKind::Fabric);
+        instance.installed_projects = records;
+        instance
+    }
+
+    /// The bug this migration exists for: every mod file resolved to one
+    /// record named after the pack's free-form `versionId`.
+    #[test]
+    fn prune_drops_freeform_ids_and_salvages_their_files() {
+        let mut instance = instance_with(vec![
+            record("26.1.2-1.1", "modpack", &["mods/a.jar", "mods/b.jar"]),
+            record("u76hn1pF", "modpack", &[]),
+        ]);
+
+        assert!(instance.prune_invalid_projects());
+        assert_eq!(instance.installed_projects.len(), 1);
+
+        let pack = &instance.installed_projects[0];
+        assert_eq!(pack.project_id, "u76hn1pF");
+        assert_eq!(pack.files, vec!["mods/a.jar", "mods/b.jar"]);
+    }
+
+    #[test]
+    fn prune_keeps_valid_and_untracked_records() {
+        let mut instance = instance_with(vec![
+            record("u76hn1pF", "modpack", &[]),
+            record("P7dR8mIR", "mod", &["mods/api.jar"]),
+            // A local `.mrpack` import: no Modrinth id, by design.
+            record("", "modpack", &[]),
+        ]);
+
+        assert!(!instance.prune_invalid_projects());
+        assert_eq!(instance.installed_projects.len(), 3);
+    }
+
+    #[test]
+    fn prune_without_a_pack_record_just_drops_the_junk() {
+        let mut instance = instance_with(vec![record("26.1.2-1.1", "mod", &["mods/a.jar"])]);
+
+        assert!(instance.prune_invalid_projects());
+        assert!(instance.installed_projects.is_empty());
+    }
+
+    #[test]
+    fn prune_deduplicates_salvaged_files() {
+        let mut instance = instance_with(vec![
+            record("26.1.2-1.1", "modpack", &["mods/a.jar"]),
+            record("u76hn1pF", "modpack", &["mods/a.jar"]),
+        ]);
+
+        assert!(instance.prune_invalid_projects());
+        assert_eq!(instance.installed_projects[0].files, vec!["mods/a.jar"]);
     }
 }

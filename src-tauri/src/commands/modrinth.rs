@@ -360,6 +360,7 @@ pub async fn modrinth_install_modpack(
     let concurrency = state.settings.read().await.concurrent_downloads;
     let mut projects = modpack::install(
         &state.http,
+        &state.modrinth_base().await,
         &pack_path,
         &dir,
         concurrency,
@@ -422,6 +423,12 @@ async fn check_updates(state: &AppState, instance_id: &str) -> Result<Vec<Update
 
     let mut updates = vec![];
     for installed in &instance.installed_projects {
+        // Local `.mrpack` imports and packs whose files couldn't be
+        // attributed have no Modrinth id; there's nothing to ask about.
+        if installed.project_id.is_empty() {
+            continue;
+        }
+
         if installed.project_type == "modpack" {
             // Re-check the pack project itself for a newer version.
             let Ok(project) = client.project(&installed.project_id).await else {

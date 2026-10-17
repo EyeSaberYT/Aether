@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::download::{download_many, DownloadSpec, Progress, ProgressSink};
 use super::instance::{LoaderKind, InstalledProject};
+use crate::api::modrinth::{ModrinthClient, Project, Version};
 use crate::error::{AetherError, Result};
 
 pub const INDEX_FILE: &str = "modrinth.index.json";
@@ -131,8 +132,12 @@ pub fn read_index(pack: &Path) -> Result<MrpackIndex> {
 }
 
 /// Install the pack into an existing (already created) instance game directory.
+///
+/// `modrinth_base` is only used to ask Modrinth which projects the pack's
+/// files came from; the download itself works without it.
 pub async fn install(
     http: &reqwest::Client,
+    modrinth_base: &str,
     pack: &Path,
     game_dir: &Path,
     concurrency: usize,
@@ -142,6 +147,9 @@ pub async fn install(
 
     // ---- download declared files -----------------------------------------
     let mut specs = vec![];
+    // (path, sha1) for every file that declares one, so the downloaded mods
+    // can be attributed to their Modrinth project afterwards.
+    let mut tracked: Vec<(String, String)> = vec![];
     for file in &index.files {
         // Skip server-only files when installing on the client.
         if let Some(env) = &file.env {
@@ -156,6 +164,7 @@ pub async fn install(
         let mut spec = DownloadSpec::new(url.clone(), dest).with_size(file.file_size);
         if let Some(sha1) = file.hashes.get("sha1") {
             spec = spec.with_sha1(sha1.clone());
+            tracked.push((file.path.clone(), sha1.clone()));
         }
         specs.push(spec);
     }
@@ -172,16 +181,123 @@ pub async fn install(
         .await
         .map_err(|e| AetherError::msg(format!("override extraction failed: {e}")))??;
 
-    // Track the pack itself so update checks can find it later.
-    Ok(vec![InstalledProject {
-        project_id: index.version_id.clone(),
+    // ---- attribution ------------------------------------------------------
+    // Track each downloaded file as the Modrinth project it came from, so
+    // update checks and the content list work per mod rather than per pack.
+    let client = ModrinthClient::new(http.clone(), modrinth_base.to_string());
+    Ok(resolve_projects(&client, &index, &tracked).await)
+}
+
+/// Ask Modrinth which projects a pack's downloaded files belong to.
+///
+/// A `.mrpack` carries no project or version ids at all — only URLs and
+/// hashes — so hashing the files back to their source is the only way to
+/// track them afterwards. Returns one record per project, or a single
+/// record naming the pack itself when nothing could be attributed.
+async fn resolve_projects(
+    client: &ModrinthClient,
+    index: &MrpackIndex,
+    files: &[(String, String)],
+) -> Vec<InstalledProject> {
+    let hashes: Vec<String> = files
+        .iter()
+        .map(|(_, sha1)| sha1.to_ascii_lowercase())
+        .collect();
+
+    let Ok(found) = client.versions_from_hashes_batched(&hashes).await else {
+        return vec![pack_record(index, files)];
+    };
+    // The API answers with its own key casing; normalise to match the index.
+    let versions: HashMap<String, Version> = found
+        .into_iter()
+        .map(|(hash, version)| (hash.to_ascii_lowercase(), version))
+        .collect();
+
+    let mut ids: Vec<String> = versions
+        .values()
+        .map(|version| version.project_id.clone())
+        .collect();
+    ids.sort();
+    ids.dedup();
+
+    // Titles and icons are cosmetic, but the project type decides how update
+    // checks filter versions, so `projects_batched` failing just degrades
+    // those records to plain mods.
+    let projects: HashMap<String, Project> = client
+        .projects_batched(&ids)
+        .await
+        .into_iter()
+        .map(|project| (project.id.clone(), project))
+        .collect();
+
+    let records = group_into_projects(files, &versions, &projects);
+    if records.is_empty() {
+        // Nothing matched — the pack ships files Modrinth has never seen.
+        // Still remember them as belonging to the pack.
+        return vec![pack_record(index, files)];
+    }
+    records
+}
+
+/// One tracking record per Modrinth project in `files`, in first-seen order.
+///
+/// Files that don't match any known hash are left out: they're custom content,
+/// not something updates can act on.
+fn group_into_projects(
+    files: &[(String, String)],
+    versions: &HashMap<String, Version>,
+    projects: &HashMap<String, Project>,
+) -> Vec<InstalledProject> {
+    let mut records: Vec<InstalledProject> = Vec::new();
+    let mut seen: HashMap<String, usize> = HashMap::new();
+
+    for (path, sha1) in files {
+        let Some(version) = versions.get(&sha1.to_ascii_lowercase()) else {
+            continue;
+        };
+        let project = projects.get(&version.project_id);
+
+        let title = project.map(|p| p.title.clone()).unwrap_or_else(|| {
+            if version.version_number.is_empty() {
+                version.name.clone()
+            } else {
+                version.version_number.clone()
+            }
+        });
+
+        let slot = *seen.entry(version.project_id.clone()).or_insert_with(|| {
+            records.push(InstalledProject {
+                project_id: version.project_id.clone(),
+                version_id: version.id.clone(),
+                title,
+                icon_url: project.and_then(|p| p.icon_url.clone()),
+                project_type: project
+                    .map(|p| p.project_type.clone())
+                    .unwrap_or_else(|| "mod".into()),
+                files: vec![],
+                installed_at: Some(chrono::Utc::now().to_rfc3339()),
+            });
+            records.len() - 1
+        });
+        records[slot].files.push(path.clone());
+    }
+    records
+}
+
+/// The record used when a pack's files couldn't be attributed to projects.
+fn pack_record(index: &MrpackIndex, files: &[(String, String)]) -> InstalledProject {
+    InstalledProject {
+        // Empty on purpose. The mrpack format carries no Modrinth ids, and
+        // inventing one out of the free-form `versionId` string (as early
+        // builds did) made every lookup against it nonsense.
+        project_id: String::new(),
         version_id: index.version_id.clone(),
         title: index.name.clone(),
         icon_url: None,
         project_type: "modpack".into(),
-        files: index.files.iter().map(|f| f.path.clone()).collect(),
+        files: files.iter().map(|(path, _)| path.clone()).collect(),
         installed_at: Some(chrono::Utc::now().to_rfc3339()),
-    }])
+    }
 }
 
 /// Copy `overrides/` and `client-overrides/` out of the archive.
@@ -346,4 +462,105 @@ pub fn safe_join(root: &Path, relative: &str) -> Option<PathBuf> {
     let normalized = candidate.canonicalize().ok()?;
     let root = root.canonicalize().ok()?;
     normalized.starts_with(root).then_some(candidate)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn version(id: &str, project_id: &str, number: &str) -> Version {
+        Version {
+            id: id.into(),
+            project_id: project_id.into(),
+            name: id.into(),
+            version_number: number.into(),
+            ..Version::default()
+        }
+    }
+
+    fn project(id: &str, title: &str, project_type: &str) -> Project {
+        Project {
+            id: id.into(),
+            title: title.into(),
+            project_type: project_type.into(),
+            ..Project::default()
+        }
+    }
+
+    #[test]
+    fn groups_files_by_project() {
+        let versions = HashMap::from([
+            ("aaa".to_string(), version("v1", "p1", "1.0")),
+            ("bbb".to_string(), version("v2", "p1", "1.1")),
+            ("ccc".to_string(), version("v3", "p2", "2.0")),
+        ]);
+        let projects = HashMap::from([
+            ("p1".to_string(), project("p1", "Alpha", "mod")),
+            ("p2".to_string(), project("p2", "Beta", "resourcepack")),
+        ]);
+        // Hash casing differs between the index (lower) and the API (upper).
+        let files = vec![
+            ("mods/a.jar".to_string(), "AAA".to_string()),
+            ("mods/b.jar".to_string(), "bbb".to_string()),
+            ("resourcepacks/c.zip".to_string(), "ccc".to_string()),
+        ];
+
+        let records = group_into_projects(&files, &versions, &projects);
+
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].project_id, "p1");
+        assert_eq!(records[0].title, "Alpha");
+        assert_eq!(records[0].version_id, "v1"); // first file's version wins
+        assert_eq!(records[0].files, vec!["mods/a.jar", "mods/b.jar"]);
+        assert_eq!(records[1].project_type, "resourcepack");
+        assert_eq!(records[1].files, vec!["resourcepacks/c.zip"]);
+    }
+
+    #[test]
+    fn unknown_files_are_left_untracked() {
+        let versions = HashMap::from([("aaa".to_string(), version("v1", "p1", "1.0"))]);
+        let files = vec![
+            ("mods/a.jar".to_string(), "aaa".to_string()),
+            ("mods/custom.jar".to_string(), "fff".to_string()),
+        ];
+
+        let records = group_into_projects(&files, &versions, &HashMap::new());
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].files, vec!["mods/a.jar"]);
+    }
+
+    #[test]
+    fn missing_project_metadata_degrades_gracefully() {
+        let versions = HashMap::from([("aaa".to_string(), version("v1", "p1", "1.0"))]);
+        let files = vec![("mods/a.jar".to_string(), "aaa".to_string())];
+
+        let records = group_into_projects(&files, &versions, &HashMap::new());
+
+        assert_eq!(records[0].title, "1.0"); // from the version, not the project
+        assert_eq!(records[0].project_type, "mod");
+        assert_eq!(records[0].icon_url, None);
+    }
+
+    #[test]
+    fn pack_record_never_invents_an_id() {
+        let index = MrpackIndex {
+            format_version: 1,
+            game: "minecraft".into(),
+            version_id: "26.1.2-1.1".into(),
+            name: "Vulkan Optimized".into(),
+            summary: None,
+            files: vec![],
+            dependencies: HashMap::new(),
+        };
+        let files = vec![("mods/a.jar".to_string(), "aaa".to_string())];
+
+        let record = pack_record(&index, &files);
+
+        assert!(record.project_id.is_empty());
+        assert_eq!(record.version_id, "26.1.2-1.1");
+        assert_eq!(record.title, "Vulkan Optimized");
+        assert_eq!(record.project_type, "modpack");
+        assert_eq!(record.files, vec!["mods/a.jar"]);
+    }
 }

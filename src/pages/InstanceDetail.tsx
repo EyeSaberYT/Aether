@@ -347,6 +347,8 @@ function OverviewTab({
   onReveal: () => void;
   isRunning: boolean;
 }) {
+  // Pack records describe where files came from, not mods in their own right.
+  const modCount = instance.installedProjects.filter((p) => p.projectType !== "modpack").length;
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Card className="p-5">
@@ -356,7 +358,7 @@ function OverviewTab({
           <Row label="Minecraft" value={instance.gameVersion} />
           <Row label="Loader" value={loaderLabel(instance.loader)} />
           <Row label="Loader build" value={instance.loaderVersion ?? "—"} />
-          <Row label="Mods installed" value={`${instance.installedProjects.length}`} />
+          <Row label="Mods installed" value={`${modCount}`} />
           <Row label="Created" value={relativeTime(instance.created)} />
         </dl>
       </Card>

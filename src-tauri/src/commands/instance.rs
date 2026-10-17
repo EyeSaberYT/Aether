@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::core::instance::{
-    self, game_dir, slugify, Instance, InstanceSettings, LoaderKind,
+    self, game_dir, slugify, Instance, InstanceSettings, InstalledProject, LoaderKind,
 };
 use crate::core::minecraft::loader;
 use crate::core::modpack;
@@ -589,14 +589,29 @@ pub async fn modpack_import(
     }
 
     let concurrency = state.settings.read().await.concurrent_downloads;
-    instance.installed_projects = modpack::install(
+    let mut projects = modpack::install(
         &state.http,
+        &state.modrinth_base().await,
         &pack,
         &dir,
         concurrency,
         state.sink(&app),
     )
     .await?;
+
+    // A file on disk carries no Modrinth ids, so the pack itself can only be
+    // remembered by name — enough to say where the instance came from, and
+    // skipped by update checks, which need a real id.
+    projects.push(InstalledProject {
+        project_id: String::new(),
+        version_id: index.version_id.clone(),
+        title: index.name.clone(),
+        icon_url: None,
+        project_type: "modpack".into(),
+        files: vec![],
+        installed_at: Some(chrono::Utc::now().to_rfc3339()),
+    });
+    instance.installed_projects = projects;
 
     {
         let mut store = state.instances.write().await;

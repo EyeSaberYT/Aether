@@ -27,13 +27,6 @@ use crate::core::scan::{
 use crate::error::{AetherError, Result};
 use crate::state::AppState;
 
-/// Hashes per provenance request. Comfortably under Labrinth's batch limit and
-/// few enough requests that a 300-mod pack stays well inside rate limits.
-const HASH_BATCH: usize = 100;
-
-/// Project ids per title lookup.
-const PROJECT_BATCH: usize = 50;
-
 // ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
@@ -97,28 +90,27 @@ async fn lookup_provenance(
     }
 
     let client = ModrinthClient::new(state.http.clone(), state.modrinth_base().await);
-    let mut versions: HashMap<String, crate::api::modrinth::Version> = HashMap::new();
 
-    // Batches, not one request per mod: a large pack is otherwise hundreds of
-    // round trips, and Modrinth will rate limit long before they finish.
-    //
     // `.ok()?` is deliberate. A failure partway through must not leave the
     // remaining files marked `unknown` when we simply never asked about them,
     // so any failure abandons the lookup entirely and the report says
-    // `unchecked`.
-    for chunk in hashes.chunks(HASH_BATCH) {
-        let hits = client.versions_from_hashes(chunk).await.ok()?;
-        versions.extend(hits.into_iter().map(|(hash, version)| (hash.to_uppercase(), version)));
-    }
+    // `unchecked`. Batching lives in the client: one request per mod would be
+    // hundreds of round trips, and Modrinth rate limits long before they
+    // finish.
+    let found = client.versions_from_hashes_batched(hashes).await.ok()?;
+    let versions: HashMap<String, crate::api::modrinth::Version> = found
+        .into_iter()
+        .map(|(hash, version)| (hash.to_uppercase(), version))
+        .collect();
 
     // A verified file deserves a readable name, not a bare project id. Titles
     // are cosmetic though, so a failure here costs nothing but the title.
-    let mut titles: HashMap<String, String> = HashMap::new();
-    for chunk in project_ids(&versions).chunks(PROJECT_BATCH) {
-        if let Ok(projects) = client.projects(chunk).await {
-            titles.extend(projects.into_iter().map(|project| (project.id, project.title)));
-        }
-    }
+    let titles: HashMap<String, String> = client
+        .projects_batched(&project_ids(&versions))
+        .await
+        .into_iter()
+        .map(|project| (project.id, project.title))
+        .collect();
 
     Some(
         versions
