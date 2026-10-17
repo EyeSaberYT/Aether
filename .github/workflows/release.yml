@@ -85,6 +85,11 @@ jobs:
           # the NSIS bundle instead: it is the per-user installer (no elevation prompt) and
           # it is the one our passive install mode was written for.
           updaterJsonPreferNsis: true
+          # Keep the standalone .sig files off the release page. The updater never fetches
+          # them: it verifies the download against the signature embedded in latest.json,
+          # which tauri-action still reads from the local build output. The .sig assets are
+          # therefore pure clutter for anyone browsing the release.
+          uploadUpdaterSignatures: false
           # tauri-action v1 no longer derives the tag from the ref: without tagName
           # it logs "No releaseId or tagName provided, skipping all uploads...".
           tagName: ${{ github.ref_name }}
