@@ -4,6 +4,14 @@ import { toast } from "sonner";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
+import {
+  CARD_GRID,
+  DEFAULT_VIEW,
+  VIEW_KEY,
+  ViewToggle,
+  asViewMode,
+  type ViewMode,
+} from "@/components/common/ViewToggle";
 import { ProjectCard, ProjectCardSkeleton } from "@/components/discover/ProjectCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { modrinth } from "@/lib/api";
 import { projectTypeLabel } from "@/lib/format";
 import type { SearchFilters, SearchHit, SearchResponse } from "@/lib/tauri";
@@ -47,8 +56,13 @@ export function Discover() {
   const [gameVersions, setGameVersions] = useState<string[]>([]);
   const [loaders, setLoaders] = useState<string[]>([]);
 
+  const [storedView, setStoredView] = usePersistentState<ViewMode>(VIEW_KEY, DEFAULT_VIEW);
+  // Storage is user-writable, so narrow it before it reaches a branch.
+  const view = asViewMode(storedView);
+
   // Whether the loader filter is meaningful for the current project type.
-  const loaderApplies = projectType === "mod" || projectType === "modpack" || projectType === "datapack";
+  const loaderApplies =
+    projectType === "mod" || projectType === "modpack" || projectType === "datapack";
 
   // Debounced search term so typing doesn't hammer the API.
   const debounced = useDebounced(query, 350);
@@ -115,6 +129,7 @@ export function Discover() {
       <PageHeader
         title="Discover"
         description="Browse mods, modpacks, resource packs, shaders and datapacks from Modrinth."
+        actions={<ViewToggle view={view} onChange={setStoredView} label="Discover layout" />}
       />
 
       {/* Type tabs */}
@@ -196,9 +211,13 @@ export function Discover() {
       </div>
 
       {/* Results */}
-      <div className="mt-6 space-y-3">
+      <div className="mt-6">
         {loading && hits.length === 0 ? (
-          Array.from({ length: 6 }).map((_, index) => <ProjectCardSkeleton key={index} />)
+          <div className={view === "grid" ? CARD_GRID : "space-y-3"}>
+            {Array.from({ length: 6 }).map((_, index) => (
+              <ProjectCardSkeleton key={index} layout={view} />
+            ))}
+          </div>
         ) : hits.length === 0 ? (
           <EmptyState
             icon={Compass}
@@ -207,16 +226,18 @@ export function Discover() {
           />
         ) : (
           <>
-            {hits.map((hit) => (
-              <ProjectCard key={`${hit.projectId}-${hit.latestVersion ?? ""}`} hit={hit} />
-            ))}
+            <div className={view === "grid" ? CARD_GRID : "space-y-3"}>
+              {hits.map((hit) => (
+                <ProjectCard
+                  key={`${hit.projectId}-${hit.latestVersion ?? ""}`}
+                  hit={hit}
+                  layout={view}
+                />
+              ))}
+            </div>
             {hits.length < total && (
-              <div className="flex justify-center pt-2">
-                <Button
-                  variant="outline"
-                  disabled={loading}
-                  onClick={() => void runSearch(true)}
-                >
+              <div className="flex justify-center pt-4">
+                <Button variant="outline" disabled={loading} onClick={() => void runSearch(true)}>
                   {loading ? "Loading…" : `Load more (${total - hits.length} left)`}
                 </Button>
               </div>

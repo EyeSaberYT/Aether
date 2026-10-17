@@ -4,6 +4,7 @@ import { Compass, PackagePlus, Play, Plus, Sparkles } from "lucide-react";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { Spinner } from "@/components/common/Spinner";
+import { CARD_GRID } from "@/components/common/ViewToggle";
 import { InstanceCard } from "@/components/instances/InstanceCard";
 import { InstanceIcon } from "@/components/instances/InstanceIcon";
 import { NewInstanceDialog } from "@/components/instances/NewInstanceDialog";
@@ -58,18 +59,13 @@ export function Home() {
                 className="h-24 w-24 text-2xl"
               />
               <div className="min-w-0 flex-1">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Most recent
-                </p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Most recent</p>
                 <h2 className="mt-1 truncate text-2xl font-semibold">{featured.name}</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className="font-mono">
                     {featured.gameVersion}
                   </Badge>
-                  <Badge
-                    variant="outline"
-                    className={cn(loaderColor(featured.loader))}
-                  >
+                  <Badge variant="outline" className={cn(loaderColor(featured.loader))}>
                     {loaderLabel(featured.loader)}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
@@ -83,15 +79,10 @@ export function Home() {
                 </Button>
                 <Button
                   variant="brand"
-                  size="lg"
                   disabled={launchingId === featured.id || running.includes(featured.id)}
                   onClick={() => void launch(featured.id)}
                 >
-                  {launchingId === featured.id ? (
-                    <Spinner />
-                  ) : (
-                    <Play className="fill-current" />
-                  )}
+                  {launchingId === featured.id ? <Spinner /> : <Play className="fill-current" />}
                   {running.includes(featured.id) ? "Running" : "Play"}
                 </Button>
               </div>
@@ -105,8 +96,7 @@ export function Home() {
             <div>
               <p className="text-lg font-semibold">No instances yet</p>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Create your first instance to start playing, or grab a modpack from
-                Modrinth.
+                Create your first instance to start playing, or grab a modpack from Modrinth.
               </p>
             </div>
             <div className="flex gap-2">
@@ -129,7 +119,7 @@ export function Home() {
               View all
             </Button>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className={CARD_GRID}>
             {recent.map((instance) => (
               <InstanceCard
                 key={instance.id}

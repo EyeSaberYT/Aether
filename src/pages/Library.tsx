@@ -3,13 +3,22 @@ import { LibraryBig, PackagePlus, Plus, Search } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
+import {
+  CARD_GRID,
+  DEFAULT_VIEW,
+  VIEW_KEY,
+  ViewToggle,
+  asViewMode,
+  type ViewMode,
+} from "@/components/common/ViewToggle";
 import { ImportModpackDialog } from "@/components/instances/ImportModpackDialog";
-import { InstanceCard } from "@/components/instances/InstanceCard";
+import { InstanceCard, InstanceRow } from "@/components/instances/InstanceCard";
 import { NewInstanceDialog } from "@/components/instances/NewInstanceDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLaunchInstance } from "@/hooks/useLaunchInstance";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { useInstances } from "@/store/useInstances";
 import { useProgress } from "@/store/useProgress";
 
@@ -24,6 +33,9 @@ export function Library() {
   const [query, setQuery] = useState("");
   const [newOpen, setNewOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [storedView, setStoredView] = usePersistentState<ViewMode>(VIEW_KEY, DEFAULT_VIEW);
+  // Storage is user-writable, so narrow it before it reaches a branch.
+  const view = asViewMode(storedView);
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -43,6 +55,7 @@ export function Library() {
         description={`${instances.length} ${instances.length === 1 ? "instance" : "instances"}`}
         actions={
           <>
+            <ViewToggle view={view} onChange={setStoredView} label="Library layout" />
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <PackagePlus /> Import pack
             </Button>
@@ -65,9 +78,9 @@ export function Library() {
 
       <div className="mt-6">
         {loading && !loaded ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className={CARD_GRID}>
             {Array.from({ length: 8 }).map((_, index) => (
-              <Skeleton key={index} className="h-56 rounded-xl" />
+              <Skeleton key={index} className="h-36 rounded-xl" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
@@ -87,8 +100,20 @@ export function Library() {
               )
             }
           />
+        ) : view === "list" ? (
+          <div className="flex flex-col gap-2">
+            {filtered.map((instance) => (
+              <InstanceRow
+                key={instance.id}
+                instance={instance}
+                running={running.includes(instance.id)}
+                launching={launchingId === instance.id}
+                onPlay={() => void launch(instance.id)}
+              />
+            ))}
+          </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className={CARD_GRID}>
             {filtered.map((instance) => (
               <InstanceCard
                 key={instance.id}
