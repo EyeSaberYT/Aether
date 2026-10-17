@@ -372,10 +372,15 @@ pub async fn instance_content(state: State<'_, AppState>, id: String) -> Result<
                 continue;
             }
 
+            // Attribution only from the project the file itself came from.
+            // A pack-level record (legacy or offline installs) says the file
+            // belongs to a pack but nothing about the mod, so those files
+            // fall back to their filename.
             let tracked = instance.installed_projects.iter().find(|p| {
-                p.files
-                    .iter()
-                    .any(|f| filename_matches(f, &file_name) || filename_matches(f, base))
+                p.project_type != "modpack"
+                    && p.files
+                        .iter()
+                        .any(|f| filename_matches(f, &file_name) || filename_matches(f, base))
             });
 
             out.push(ContentEntry {
