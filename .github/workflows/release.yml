@@ -22,10 +22,17 @@ permissions:
 
 jobs:
   release:
+    name: Release (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - platform: windows-latest
+            name: Windows
+          - platform: ubuntu-latest
+            name: Linux
+          - platform: macos-latest
+            name: macOS
 
     runs-on: ${{ matrix.platform }}
 
@@ -47,12 +54,17 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # ubuntu-latest is just GitHub's Linux build machine — the artifacts it
+      # produces (AppImage, deb, rpm) are not tied to Ubuntu.
       - name: Install Linux system dependencies
         if: matrix.platform == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget \
             file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev rpm
+          # Packaging an AppImage runs a small AppImage helper, which needs libfuse.
+          # The package was renamed in Ubuntu 24.04 (libfuse2 -> libfuse2t64).
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
 
       - name: Install frontend dependencies
         run: npm ci
@@ -64,14 +76,24 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          # Linux gets distro-agnostic formats: a universal AppImage that runs on any
+          # distribution, plus native deb (Debian/Ubuntu) and rpm (Fedora/RHEL) packages.
+          # Other platforms build everything their platform supports.
+          args: ${{ matrix.platform == 'ubuntu-latest' && '--bundles deb,rpm,appimage' || '' }}
           releaseBody: |
             First public release of Aether — a free, open-source, ad-free Minecraft launcher.
 
-            **Install:** download `Aether_*_x64-setup.exe` (Windows), the `.AppImage`/`.deb`/`.rpm`
-            (Linux) or the `.dmg` (macOS). In-app updates are enabled: later versions will be
-            offered automatically from Settings → Updates.
+            **Install**
+            - **Windows:** `Aether_*_x64-setup.exe` (or the `.msi`).
+            - **Linux (any distribution):** `Aether_*_amd64.AppImage` — `chmod +x` it and run;
+              no installation required. Also published as `.deb` (Debian, Ubuntu, Mint, Pop!_OS)
+              and `.rpm` (Fedora, RHEL, openSUSE).
+            - **macOS:** the `.dmg`.
 
-            > Windows SmartScreen may warn on unsigned downloads; Aether is MIT-licensed and
-            > fully open source.
+            In-app updates are enabled: newer versions are offered automatically from
+            Settings → Updates.
+
+            > Windows SmartScreen may warn about unsigned downloads, and macOS Gatekeeper may
+            > need right-click → Open. Aether is MIT-licensed and fully open source.
           releaseDraft: false
           prerelease: false
