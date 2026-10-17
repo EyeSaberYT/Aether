@@ -35,9 +35,10 @@ fn public(store: &AccountStore) -> Vec<PublicAccount> {
 
 /// Back-fill skin urls that older builds (or an earlier sign-in) never saved.
 ///
-/// Best effort and time-boxed: a slow or offline network must never stall the
-/// account list, and a failed lookup simply keeps the placeholder until the next
-/// token refresh supplies the texture.
+/// Best effort: a failed lookup simply keeps the placeholder in place until the
+/// next token refresh supplies the texture. Lookups run concurrently behind a
+/// single deadline each, so a whole batch costs one timeout rather than N of
+/// them — the account list must never wait on a slow or offline network.
 async fn fill_missing_skins(state: &AppState) {
     let pending: Vec<Account> = {
         let store = state.accounts.read().await;
@@ -52,24 +53,48 @@ async fn fill_missing_skins(state: &AppState) {
         return;
     }
 
-    for account in pending {
+    let lookups = pending.iter().map(|account| async move {
         let skin = tokio::time::timeout(
-            std::time::Duration::from_secs(4),
-            microsoft::skin_for_account(&state.http, &account),
+            std::time::Duration::from_secs(5),
+            microsoft::skin_for_account(&state.http, account),
         )
         .await
         .ok()
         .and_then(|outcome| outcome.ok())
         .flatten();
 
-        let Some(skin) = skin else { continue };
+        (account.uuid.as_str(), skin)
+    });
+    let results = futures::future::join_all(lookups).await;
 
-        let mut store = state.accounts.write().await;
-        if let Some(existing) = store.accounts.iter_mut().find(|a| a.uuid == account.uuid) {
+    let updates: Vec<(&str, String)> = results
+        .into_iter()
+        .filter_map(|(uuid, skin)| skin.map(|skin| (uuid, skin)))
+        .collect();
+    if updates.is_empty() {
+        return;
+    }
+
+    // One lock and one write for the whole batch instead of one per account.
+    let mut store = state.accounts.write().await;
+    let mut changed = false;
+    for (uuid, skin) in updates {
+        let Some(existing) = store.accounts.iter_mut().find(|a| a.uuid == uuid) else {
+            continue;
+        };
+        // Still unfilled? A concurrent sign-in or refresh may have got there
+        // first while we were on the network, and theirs is just as fresh.
+        if existing.skin_url.is_none() {
             existing.skin_url = Some(skin);
-            // A failed write only costs one extra lookup next launch, so it
-            // must not fail the account list over a cosmetic field.
-            let _ = store.save(&state.paths);
+            changed = true;
+        }
+    }
+
+    if changed {
+        if let Err(error) = store.save(&state.paths) {
+            // Only cosmetic: a failed write costs one extra lookup next
+            // launch, so report it without failing the account list.
+            log::warn!("failed to persist back-filled skin urls: {error}");
         }
     }
 }

@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { initials } from "@/lib/format";
+import { headCrop } from "@/lib/skin";
 import type { AccountKind } from "@/lib/tauri";
 import { activeAccount, useAccounts } from "@/store/useAccounts";
 
@@ -141,9 +142,9 @@ function useSkinTexture(url: string | null | undefined): SkinTexture {
     image.onerror = () => setTexture({ state: "broken" });
     image.src = url;
 
-    // A url already in the browser's cache may be settled before the events
-    // run; `complete` says whether it decoded, `naturalHeight` whether it
-    // succeeded (it is set for failed loads too, hence the check).
+    // A url already in the browser's cache can be settled before its events
+    // run, so check directly: `complete` is also true once a load has *failed*,
+    // which is why `naturalHeight` (0 on failure) is what separates the two.
     if (image.complete) {
       if (image.naturalHeight > 0) {
         setTexture({ state: "loaded", height: image.naturalHeight });
@@ -159,27 +160,6 @@ function useSkinTexture(url: string | null | undefined): SkinTexture {
   }, [url]);
 
   return texture;
-}
-
-/**
- * CSS that crops a skin sheet down to the head's front face.
- *
- * The face occupies source pixels (8,8)-(16,16), and the sheet is scaled so
- * those 8 pixels fill the box — i.e. the sheet renders `sheet / 8` boxes wide
- * and tall. `background-position` percentages resolve against (box - sheet),
- * so shifting by exactly one box needs `1 / (sheet/8 - 1)` percent: 1/7 for the
- * 64-wide axis, and 1/7 or 1/3 for the tall axis depending on sheet height.
- */
-function headCrop(sheetHeight: number) {
-  const height = sheetHeight >= 32 ? sheetHeight : 64;
-  const widthScale = 64 / 8;
-  const heightScale = height / 8;
-
-  return {
-    backgroundSize: `${widthScale * 100}% ${heightScale * 100}%`,
-    backgroundPosition: `${100 / (widthScale - 1)}% ${100 / (heightScale - 1)}%`,
-    backgroundRepeat: "no-repeat" as const,
-  };
 }
 
 /**
@@ -205,27 +185,28 @@ export function SkinAvatar({
 }: {
   uuid: string;
   name: string;
-  kind?: AccountKind;
-  skinUrl?: string | null;
+  kind: AccountKind;
+  skinUrl: string | null;
   className?: string;
 }) {
   const texture = useSkinTexture(skinUrl);
 
-  // Take over as soon as the sheet exists; only give up on it if it fails.
-  const useTexture = Boolean(skinUrl) && texture.state !== "broken";
-  const useService = !useTexture && kind !== "offline";
+  // The sheet takes over as soon as it exists; only give up on it if it fails.
+  const sheetUrl = skinUrl && texture.state !== "broken" ? skinUrl : null;
+  // An offline profile has no authentic skin, so its initials are the honest
+  // answer rather than an arbitrary default head.
+  const useService = sheetUrl === null && kind !== "offline";
 
-  if (useTexture) {
+  if (sheetUrl !== null) {
     return (
       <Avatar className={className}>
         <div
           role="img"
           aria-label={`${name}'s skin`}
-          className="h-full w-full"
-          style={{
-            backgroundImage: `url("${skinUrl}")`,
-            ...headCrop(texture.state === "loaded" ? texture.height : 64),
-          }}
+          // Match the fallback's placeholder so the circle is never a hole
+          // while the sheet decodes.
+          className="h-full w-full bg-muted"
+          style={headCrop(sheetUrl, texture.state === "loaded" ? texture.height : null)}
         />
       </Avatar>
     );
@@ -234,11 +215,7 @@ export function SkinAvatar({
   return (
     <Avatar className={className}>
       {useService && (
-        <AvatarImage
-          src={`https://mc-heads.net/avatar/${uuid}/64`}
-          alt={name}
-          loading="lazy"
-        />
+        <AvatarImage src={`https://mc-heads.net/avatar/${uuid}/64`} alt={name} loading="lazy" />
       )}
       <AvatarFallback>{initials(name)}</AvatarFallback>
     </Avatar>

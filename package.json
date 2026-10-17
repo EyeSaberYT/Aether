@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
+    "test": "node scripts/verify-skin.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "tauri": "node scripts/run-tauri.mjs",
     "tauri:dev": "node scripts/run-tauri.mjs dev",
