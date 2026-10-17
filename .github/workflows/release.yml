@@ -52,7 +52,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget \
-            file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+            file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev rpm
 
       - name: Install frontend dependencies
         run: npm ci
@@ -63,3 +63,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseBody: |
+            First public release of Aether — a free, open-source, ad-free Minecraft launcher.
+
+            **Install:** download `Aether_*_x64-setup.exe` (Windows), the `.AppImage`/`.deb`/`.rpm`
+            (Linux) or the `.dmg` (macOS). In-app updates are enabled: later versions will be
+            offered automatically from Settings → Updates.
+
+            > Windows SmartScreen may warn on unsigned downloads; Aether is MIT-licensed and
+            > fully open source.
+          releaseDraft: false
+          prerelease: false
