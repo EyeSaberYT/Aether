@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { ErrorState } from "@/components/common/ErrorState";
+import { Markdown } from "@/components/common/Markdown";
 import { InstallDialog } from "@/components/discover/InstallDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { modrinth, system } from "@/lib/api";
-import { compactNumber, plainText, projectTypeColor, projectTypeLabel, relativeTime } from "@/lib/format";
+import { compactNumber, projectTypeColor, projectTypeLabel, relativeTime } from "@/lib/format";
 import type { ModrinthProject, ModrinthVersion } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -163,9 +164,7 @@ export function ProjectDetail() {
           <h2 className="text-lg font-semibold">About</h2>
           <Separator className="my-4" />
           {project.body ? (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-              {plainText(project.body)}
-            </p>
+            <Markdown>{project.body}</Markdown>
           ) : (
             <p className="text-sm text-muted-foreground">No description provided.</p>
           )}

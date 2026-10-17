@@ -141,15 +141,6 @@ export function severityLabel(severity: ScanSeverity): string {
   }
 }
 
-/** Strip the limited Markdown Modrinth allows down to readable text. */
-export function plainText(markdown: string): string {
-  return markdown
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[*_`#>]/g, "")
-    .trim();
-}
-
 /** Pick a readable foreground colour for a solid swatch. */
 export function initials(name: string): string {
   const cleaned = name.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
