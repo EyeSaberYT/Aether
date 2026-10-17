@@ -42,6 +42,10 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        // Self-update: downloads signed releases published on GitHub, and
+        // restarts into them via the process plugin.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(state)
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

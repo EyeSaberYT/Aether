@@ -17,6 +17,8 @@
     "os:default",
     "opener:default",
     "store:default",
+    "updater:default",
+    "process:default",
     {
       "identifier": "fs:allow-write-file",
       "allow": [{ "path": "**" }]

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import {
   Cpu,
+  Download,
   FolderOpen,
   Info,
   Monitor,
   Palette,
   RefreshCw,
+  RotateCcw,
   Settings2,
   Sliders,
   Terminal,
@@ -20,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -30,7 +33,9 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { system } from "@/lib/api";
+import { formatBytes } from "@/lib/format";
 import { useSettings } from "@/store/useSettings";
+import { useUpdater } from "@/store/useUpdater";
 import { cn } from "@/lib/utils";
 
 const JAVA_MAJORS = [8, 16, 17, 21, 25];
@@ -43,6 +48,14 @@ export function Settings() {
   const save = useSettings((state) => state.save);
   const refreshJava = useSettings((state) => state.refreshJava);
   const installJava = useSettings((state) => state.installJava);
+
+  const updateStatus = useUpdater((state) => state.status);
+  const pendingUpdate = useUpdater((state) => state.update);
+  const updateProgress = useUpdater((state) => state.progress);
+  const updateError = useUpdater((state) => state.error);
+  const checkForUpdates = useUpdater((state) => state.check);
+  const installUpdate = useUpdater((state) => state.install);
+  const relaunchApp = useUpdater((state) => state.relaunch);
 
   const [draft, setDraft] = useState(settings);
   const [saving, setSaving] = useState(false);
@@ -320,6 +333,78 @@ export function Settings() {
               ) : null,
             )}
           </ul>
+        </Card>
+
+        {/* Updates */}
+        <Card className="p-5">
+          <SectionTitle icon={RefreshCw} title="Updates" />
+          <Separator className="my-3" />
+          {updateStatus === "downloading" && updateProgress ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span>
+                  Downloading Aether {pendingUpdate?.version ?? ""}
+                  {updateProgress.total ? "" : "…"}
+                </span>
+                <span className="text-muted-foreground">
+                  {updateProgress.total
+                    ? `${formatBytes(updateProgress.downloaded)} / ${formatBytes(updateProgress.total)}`
+                    : formatBytes(updateProgress.downloaded)}
+                </span>
+              </div>
+              <Progress
+                value={
+                  updateProgress.total
+                    ? (updateProgress.downloaded / updateProgress.total) * 100
+                    : undefined
+                }
+              />
+            </div>
+          ) : updateStatus === "installed" ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm">
+                Aether {pendingUpdate?.version} is installed. Restart to finish the update.
+              </p>
+              <Button variant="brand" onClick={() => void relaunchApp()}>
+                <RotateCcw /> Restart now
+              </Button>
+            </div>
+          ) : updateStatus === "available" && pendingUpdate ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm">
+                Aether {pendingUpdate.version} is available (you have {pendingUpdate.currentVersion}
+                ).
+              </p>
+              <Button variant="brand" onClick={() => void installUpdate()}>
+                <Download /> Download &amp; install
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {updateStatus === "checking" ? (
+                  "Looking for a newer version…"
+                ) : updateStatus === "up-to-date" ? (
+                  <span className="text-foreground">
+                    You're running the latest version ({appInfo?.version ?? "unknown"}).
+                  </span>
+                ) : updateStatus === "error" ? (
+                  <span className="text-destructive">
+                    {updateError ?? "Couldn't check for updates."}
+                  </span>
+                ) : (
+                  "Check GitHub Releases for a newer version of Aether."
+                )}
+              </p>
+              <Button
+                variant="outline"
+                disabled={updateStatus === "checking"}
+                onClick={() => void checkForUpdates()}
+              >
+                {updateStatus === "checking" ? <Spinner /> : <RefreshCw />} Check for updates
+              </Button>
+            </div>
+          )}
         </Card>
 
         {/* About */}

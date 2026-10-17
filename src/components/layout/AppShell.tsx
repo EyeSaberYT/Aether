@@ -4,6 +4,7 @@ import { Outlet } from "react-router-dom";
 import { ProgressFooter } from "@/components/layout/ProgressFooter";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { useBackendEvents } from "@/hooks/useBackendEvents";
+import { useUpdatePrompt } from "@/hooks/useUpdatePrompt";
 import { useAccounts } from "@/store/useAccounts";
 import { useInstances } from "@/store/useInstances";
 import { useProgress } from "@/store/useProgress";
@@ -15,6 +16,7 @@ import { useSettings } from "@/store/useSettings";
  */
 export function AppShell() {
   useBackendEvents();
+  useUpdatePrompt();
 
   const loadSettings = useSettings((state) => state.load);
   const refreshAccounts = useAccounts((state) => state.refresh);
