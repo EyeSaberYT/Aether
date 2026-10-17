@@ -38,6 +38,12 @@ interface InstallDialogProps {
  */
 export function InstallDialog({ open, onOpenChange, project }: InstallDialogProps) {
   const isModpack = project.projectType === "modpack";
+  // Resource packs and shaders don't declare loaders, and filtering their
+  // versions by the instance's Minecraft release just locks the user out of
+  // installing at all. List every version and warn about compatibility
+  // instead — plenty of packs work across adjacent releases.
+  const isLoaderAgnostic =
+    project.projectType === "resourcepack" || project.projectType === "shader";
 
   const instances = useInstances((state) => state.instances);
   const refresh = useInstances((state) => state.refresh);
@@ -68,8 +74,9 @@ export function InstallDialog({ open, onOpenChange, project }: InstallDialogProp
     if (!open) return;
     let cancelled = false;
     setLoadingVersions(true);
-    const gameVersion = isModpack ? undefined : selected?.gameVersion;
-    const loader = isModpack ? undefined : selected?.loader;
+    const unfiltered = isModpack || isLoaderAgnostic;
+    const gameVersion = unfiltered ? undefined : selected?.gameVersion;
+    const loader = unfiltered ? undefined : selected?.loader;
     modrinth
       .versions(project.id, gameVersion, loader)
       .then((list) => !cancelled && setVersions(list))
@@ -78,7 +85,7 @@ export function InstallDialog({ open, onOpenChange, project }: InstallDialogProp
     return () => {
       cancelled = true;
     };
-  }, [open, project.id, isModpack, selected?.gameVersion, selected?.loader]);
+  }, [open, project.id, isModpack, isLoaderAgnostic, selected?.gameVersion, selected?.loader]);
 
   async function handleInstall() {
     setBusy(true);
@@ -173,6 +180,13 @@ export function InstallDialog({ open, onOpenChange, project }: InstallDialogProp
             {!loadingVersions && versions.length === 0 && (
               <p className="text-xs text-destructive">
                 No compatible version found for this instance.
+              </p>
+            )}
+            {isLoaderAgnostic && (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-300">
+                {projectTypeLabel(project.projectType)}s aren’t tied to a mod loader, so this list
+                isn’t filtered for your instance. Check the pack supports Minecraft{" "}
+                {selected?.gameVersion ?? "your version"} before installing.
               </p>
             )}
           </div>
