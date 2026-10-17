@@ -80,6 +80,10 @@ jobs:
           # distribution, plus native deb (Debian/Ubuntu) and rpm (Fedora/RHEL) packages.
           # Other platforms build everything their platform supports.
           args: ${{ matrix.platform == 'ubuntu-latest' && '--bundles deb,rpm,appimage' || '' }}
+          # tauri-action v1 no longer derives the tag from the ref: without tagName
+          # it logs "No releaseId or tagName provided, skipping all uploads...".
+          tagName: ${{ github.ref_name }}
+          releaseName: Aether ${{ github.ref_name }}
           releaseBody: |
             First public release of Aether — a free, open-source, ad-free Minecraft launcher.
 
