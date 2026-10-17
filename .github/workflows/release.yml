@@ -80,6 +80,11 @@ jobs:
           # distribution, plus native deb (Debian/Ubuntu) and rpm (Fedora/RHEL) packages.
           # Other platforms build everything their platform supports.
           args: ${{ matrix.platform == 'ubuntu-latest' && '--bundles deb,rpm,appimage' || '' }}
+          # By default the updater manifest points windows-x86_64 at the WiX .msi, even
+          # though the download users are told to grab is the NSIS setup.exe. Point it at
+          # the NSIS bundle instead: it is the per-user installer (no elevation prompt) and
+          # it is the one our passive install mode was written for.
+          updaterJsonPreferNsis: true
           # tauri-action v1 no longer derives the tag from the ref: without tagName
           # it logs "No releaseId or tagName provided, skipping all uploads...".
           tagName: ${{ github.ref_name }}

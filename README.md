@@ -1,5 +1,9 @@
 # Aether
 
+[![Latest release](https://img.shields.io/github/v/release/EyeSaberYT/Aether?sort=semver&style=flat-square)](https://github.com/EyeSaberYT/Aether/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/EyeSaberYT/Aether/total?style=flat-square)](https://github.com/EyeSaberYT/Aether/releases)
+[![License: MIT](https://img.shields.io/github/license/EyeSaberYT/Aether?style=flat-square)](LICENSE)
+
 A modern, open-source, ad-free Minecraft launcher for Windows, macOS and Linux —
 built as a Tauri 2 desktop app with a React + TypeScript front end and a Rust core.
 
@@ -8,9 +12,37 @@ dark-mode-first interface, first-class mod-loader support and deep Modrinth
 integration, with none of the telemetry, ads or bundled junk found in legacy
 launchers.
 
-> **Status:** early development (`0.1.0`). Instance management and launching work
-> end to end; the Microsoft sign-in flow needs a client ID (see below). The code
-> is production-oriented and fully typed, but expect rough edges.
+> **Status:** early development (`0.1.0`). Instance management, launching and the
+> in-app updater work end to end. Online Microsoft sign-in depends on Mojang
+> allow-listing Aether's built-in client id — see
+> [Enabling Microsoft sign-in](#enabling-microsoft-sign-in) — and offline profiles
+> always work. The code is production-oriented and fully typed, but expect rough
+> edges.
+
+---
+
+## Download
+
+Grab the latest build from the [**Releases page**](https://github.com/EyeSaberYT/Aether/releases/latest).
+Every artifact is produced and signed by GitHub Actions from the tagged source.
+
+| Platform                       | File                      | How to install                                                                            |
+| ------------------------------ | ------------------------- | ----------------------------------------------------------------------------------------- |
+| **Windows**                    | `Aether_*_x64-setup.exe`  | Run it — installs Aether and adds a Start-menu entry. A `.msi` is published alongside it. |
+| **Linux** (any distribution)   | `Aether_*_amd64.AppImage` | `chmod +x Aether_*.AppImage && ./Aether_*.AppImage` — self-contained, nothing to install. |
+| **Linux** (Debian/Ubuntu/Mint) | `Aether_*_amd64.deb`      | `sudo apt install ./Aether_*_amd64.deb`                                                   |
+| **Linux** (Fedora/RHEL/SUSE)   | `Aether-*.x86_64.rpm`     | `sudo dnf install ./Aether-*.x86_64.rpm`                                                  |
+| **macOS** (Apple silicon)      | `Aether_*_aarch64.dmg`    | Open the `.dmg` and drag Aether into Applications.                                        |
+
+Requires Windows 10+, macOS 10.15+ or a modern Linux desktop.
+
+> **Updates are built in.** Aether checks for a new release on startup and from
+> **Settings → Updates**, then downloads it and verifies its signature before
+> installing. You can always update by hand from the Releases page instead.
+
+> **Why the warnings?** The installers are not code-signed, so Windows SmartScreen
+> may flag an unknown publisher and macOS Gatekeeper may need a right-click →
+> **Open** the first time. There is currently no Intel (x86_64) macOS build.
 
 ---
 
@@ -54,7 +86,8 @@ launchers.
   needs one.
 
 ### Extras
-- Background update checks on startup.
+- Signed, in-app updates — Aether checks for a new release on startup and from
+  Settings, then verifies the download's signature before installing it.
 - Dark, light and system themes.
 - Keyboard-friendly, animation-rich UI with live download progress.
 
@@ -270,7 +303,7 @@ cargo clippy
 - [ ] Server list management
 - [ ] CurseForge support
 - [ ] Multiple simultaneous game processes (currently one per instance)
-- [ ] Auto-updating launcher
+- [x] Auto-updating launcher (signed, in-app)
 
 ---
 

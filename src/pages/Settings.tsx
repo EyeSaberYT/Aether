@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Cpu,
   Download,
+  ExternalLink,
   FolderOpen,
   Info,
   Monitor,
@@ -39,6 +40,9 @@ import { useUpdater } from "@/store/useUpdater";
 import { cn } from "@/lib/utils";
 
 const JAVA_MAJORS = [8, 16, 17, 21, 25];
+
+/** Where to send anyone who would rather grab an installer by hand. */
+const RELEASES_URL = "https://github.com/EyeSaberYT/Aether/releases/latest";
 
 /** Global launcher configuration. */
 export function Settings() {
@@ -405,6 +409,10 @@ export function Settings() {
               </Button>
             </div>
           )}
+          <p className="mt-4 text-xs text-muted-foreground">
+            Installing on another machine, or updating by hand?{" "}
+            <InlineLink href={RELEASES_URL}>Download the latest release</InlineLink>
+          </p>
         </Card>
 
         {/* About */}
@@ -436,6 +444,20 @@ function SectionTitle({ icon: Icon, title }: { icon: LucideIcon; title: string }
       <Icon className="h-4 w-4 text-muted-foreground" />
       <h2 className="text-sm font-semibold">{title}</h2>
     </div>
+  );
+}
+
+/** Small inline link that hands a URL to the OS browser. */
+function InlineLink({ children, href }: { children: ReactNode; href: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => void system.openUrl(href)}
+      className="inline-flex items-center gap-1 font-medium text-primary underline-offset-4 hover:underline"
+    >
+      {children}
+      <ExternalLink className="h-3 w-3" />
+    </button>
   );
 }
 
