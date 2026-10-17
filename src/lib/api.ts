@@ -23,6 +23,7 @@ import {
   type ModrinthTag,
   type ModrinthVersion,
   type PublicAccount,
+  type ScanReport,
   type SearchFilters,
   type SearchResponse,
   type Settings,
@@ -170,8 +171,7 @@ export const modrinth = {
     invoke<UpdateInfo[]>("modrinth_check_updates", { instanceId }),
   applyUpdate: (instanceId: string, projectId: string, versionId: string) =>
     invoke<void>("modrinth_apply_update", { instanceId, projectId, versionId }),
-  updateAll: (instanceId: string) =>
-    invoke<number>("modrinth_update_all", { instanceId }),
+  updateAll: (instanceId: string) => invoke<number>("modrinth_update_all", { instanceId }),
   dependencies: (instanceId: string, versionId: string) =>
     invoke<ResolvedFile[]>("modrinth_dependencies", { instanceId, versionId }),
 };
@@ -184,8 +184,16 @@ export const java = {
   list: () => invoke<JavaRuntime[]>("java_list"),
   detect: (requiredMajor = 0) => invoke<JavaRuntime | null>("java_detect", { requiredMajor }),
   install: (requiredMajor: number) => invoke<JavaRuntime>("java_install", { requiredMajor }),
-  requirement: (gameVersion: string) =>
-    invoke<number>("java_requirement", { gameVersion }),
+  requirement: (gameVersion: string) => invoke<number>("java_requirement", { gameVersion }),
+};
+
+// ---------------------------------------------------------------------------
+// Security
+// ---------------------------------------------------------------------------
+
+export const security = {
+  /** Scan an instance's mods and packs: heuristics, then Modrinth provenance. */
+  scan: (id: string) => invoke<ScanReport>("scan_instance", { id }),
 };
 
 // ---------------------------------------------------------------------------

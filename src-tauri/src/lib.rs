@@ -109,6 +109,8 @@ pub fn run() {
             commands::modrinth::modrinth_apply_update,
             commands::modrinth::modrinth_update_all,
             commands::modrinth::modrinth_dependencies,
+
+            commands::scan::scan_instance,
             // ---- java ------------------------------------------------------
             commands::java::java_list,
             commands::java::java_detect,

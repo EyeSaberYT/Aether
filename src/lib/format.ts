@@ -1,4 +1,5 @@
 /** Formatting helpers shared across the UI. */
+import type { ScanSeverity } from "@/lib/tauri";
 
 const NUMBER_FORMAT = new Intl.NumberFormat("en", { notation: "compact" });
 
@@ -114,6 +115,29 @@ export function projectTypeLabel(type: string): string {
       return "Datapack";
     default:
       return "Mod";
+  }
+}
+
+/** Tint for a scan severity, in the same family as the loader badges. */
+export function severityColor(severity: ScanSeverity): string {
+  switch (severity) {
+    case "critical":
+      return "bg-red-500/15 text-red-300 border-red-500/30";
+    case "warning":
+      return "bg-amber-500/15 text-amber-300 border-amber-500/30";
+    default:
+      return "bg-sky-500/15 text-sky-300 border-sky-500/30";
+  }
+}
+
+export function severityLabel(severity: ScanSeverity): string {
+  switch (severity) {
+    case "critical":
+      return "Critical";
+    case "warning":
+      return "Warning";
+    default:
+      return "Info";
   }
 }
 

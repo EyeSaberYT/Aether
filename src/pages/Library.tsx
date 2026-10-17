@@ -14,11 +14,13 @@ import {
 import { ImportModpackDialog } from "@/components/instances/ImportModpackDialog";
 import { InstanceCard, InstanceRow } from "@/components/instances/InstanceCard";
 import { NewInstanceDialog } from "@/components/instances/NewInstanceDialog";
+import { ScanDialog } from "@/components/instances/ScanDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLaunchInstance } from "@/hooks/useLaunchInstance";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import type { InstanceSummary } from "@/lib/tauri";
 import { useInstances } from "@/store/useInstances";
 import { useProgress } from "@/store/useProgress";
 
@@ -33,6 +35,9 @@ export function Library() {
   const [query, setQuery] = useState("");
   const [newOpen, setNewOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  // One scan dialog serves the whole library; it opens for whichever instance
+  // was picked, rather than one dialog living on every card.
+  const [scanTarget, setScanTarget] = useState<InstanceSummary | null>(null);
   const [storedView, setStoredView] = usePersistentState<ViewMode>(VIEW_KEY, DEFAULT_VIEW);
   // Storage is user-writable, so narrow it before it reaches a branch.
   const view = asViewMode(storedView);
@@ -109,6 +114,7 @@ export function Library() {
                 running={running.includes(instance.id)}
                 launching={launchingId === instance.id}
                 onPlay={() => void launch(instance.id)}
+                onScan={setScanTarget}
               />
             ))}
           </div>
@@ -121,6 +127,7 @@ export function Library() {
                 running={running.includes(instance.id)}
                 launching={launchingId === instance.id}
                 onPlay={() => void launch(instance.id)}
+                onScan={setScanTarget}
               />
             ))}
           </div>
@@ -129,6 +136,14 @@ export function Library() {
 
       <NewInstanceDialog open={newOpen} onOpenChange={setNewOpen} />
       <ImportModpackDialog open={importOpen} onOpenChange={setImportOpen} />
+      <ScanDialog
+        open={scanTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setScanTarget(null);
+        }}
+        instanceId={scanTarget?.id ?? ""}
+        instanceName={scanTarget?.name ?? ""}
+      />
     </div>
   );
 }

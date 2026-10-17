@@ -1,4 +1,4 @@
-import { Play, Square } from "lucide-react";
+import { Play, ShieldCheck, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -15,6 +15,8 @@ interface InstanceCardProps {
   running: boolean;
   launching: boolean;
   onPlay: (instance: InstanceSummary) => void;
+  /** When provided, each layout shows a scan control for this instance. */
+  onScan?: (instance: InstanceSummary) => void;
 }
 
 /**
@@ -82,8 +84,30 @@ function InstancePlayButton({
   );
 }
 
+/**
+ * Shield control for the content scan. Same reasoning as the play button: it
+ * lives inside a surface that navigates on click, so it stops the event.
+ */
+function InstanceScanButton({ instance, onScan }: Pick<InstanceCardProps, "instance" | "onScan">) {
+  if (!onScan) return null;
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      title="Scan mods and packs"
+      onClick={(event) => {
+        event.stopPropagation();
+        onScan(instance);
+      }}
+    >
+      <ShieldCheck />
+    </Button>
+  );
+}
+
 /** A single card in the library grid. */
-export function InstanceCard({ instance, running, launching, onPlay }: InstanceCardProps) {
+export function InstanceCard({ instance, running, launching, onPlay, onScan }: InstanceCardProps) {
   return (
     <InstanceSurface instance={instance} className="flex flex-col gap-3 p-3.5">
       <div className="flex items-center gap-3">
@@ -113,13 +137,16 @@ export function InstanceCard({ instance, running, launching, onPlay }: InstanceC
         <span className="truncate">Played {relativeTime(instance.lastPlayed)}</span>
       </div>
 
-      <InstancePlayButton
-        instance={instance}
-        running={running}
-        launching={launching}
-        onPlay={onPlay}
-        className="w-full"
-      />
+      <div className="flex items-center gap-2">
+        <InstancePlayButton
+          instance={instance}
+          running={running}
+          launching={launching}
+          onPlay={onPlay}
+          className="flex-1"
+        />
+        <InstanceScanButton instance={instance} onScan={onScan} />
+      </div>
     </InstanceSurface>
   );
 }
@@ -129,7 +156,7 @@ export function InstanceCard({ instance, running, launching, onPlay }: InstanceC
  * fixed-width columns keep version, mod count and last-played aligned across
  * every row, and drop away as the window narrows rather than crushing the name.
  */
-export function InstanceRow({ instance, running, launching, onPlay }: InstanceCardProps) {
+export function InstanceRow({ instance, running, launching, onPlay, onScan }: InstanceCardProps) {
   return (
     <InstanceSurface instance={instance} className="flex items-center gap-3 px-3 py-2.5">
       <InstanceIcon
@@ -157,13 +184,15 @@ export function InstanceRow({ instance, running, launching, onPlay }: InstanceCa
         Played {relativeTime(instance.lastPlayed)}
       </span>
 
-      <InstancePlayButton
-        instance={instance}
-        running={running}
-        launching={launching}
-        onPlay={onPlay}
-        className="ml-1 shrink-0"
-      />
+      <div className="ml-1 flex shrink-0 items-center gap-1">
+        <InstanceScanButton instance={instance} onScan={onScan} />
+        <InstancePlayButton
+          instance={instance}
+          running={running}
+          launching={launching}
+          onPlay={onPlay}
+        />
+      </div>
     </InstanceSurface>
   );
 }

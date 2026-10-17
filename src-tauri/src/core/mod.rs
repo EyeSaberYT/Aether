@@ -12,3 +12,4 @@ pub mod launch;
 pub mod minecraft;
 pub mod modpack;
 pub mod paths;
+pub mod scan;

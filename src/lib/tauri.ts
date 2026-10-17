@@ -329,3 +329,62 @@ export interface UpdateInfo {
   changelog: string | null;
   projectType: string;
 }
+
+// ---------------------------------------------------------------------------
+// Content scanning
+// ---------------------------------------------------------------------------
+
+/**
+ * How much weight a finding should carry. These are evidence, not verdicts —
+ * a `warning` is a capability mods rarely need, not proof of malice.
+ */
+export type ScanSeverity = "info" | "warning" | "critical";
+
+/** One concrete thing the scanner noticed. */
+export interface ScanFinding {
+  severity: ScanSeverity;
+  /** Stable machine code, e.g. `msa_tokens`, `embedded_executable`. */
+  code: string;
+  summary: string;
+  /** Why this matters, in plain language. */
+  detail: string;
+  /** Path inside the archive that triggered it, when it was a specific entry. */
+  entry: string | null;
+}
+
+/** Whether a file is still byte-for-byte the file Modrinth published. */
+export type ProvenanceStatus = "verified" | "unknown" | "unchecked";
+
+export interface ScanProvenance {
+  status: ProvenanceStatus;
+  project: string | null;
+  version: string | null;
+  projectId: string | null;
+}
+
+/** The result for a single mod or pack. */
+export interface ScanFileReport {
+  /** Path relative to the instance's game directory, e.g. `mods/sodium.jar`. */
+  file: string;
+  /** `mod`, `resourcepack`, `shaderpack` or `datapack`. */
+  kind: string;
+  size: number;
+  sha1: string;
+  /** Worst severity first; empty when nothing was flagged. */
+  findings: ScanFinding[];
+  provenance: ScanProvenance;
+  /** True when the scan hit a budget and stopped looking early. */
+  truncated: boolean;
+}
+
+/** Everything a scan learned about an instance's content. */
+export interface ScanReport {
+  /** Worst severity first, then by path; clean files come last. */
+  files: ScanFileReport[];
+  examined: number;
+  critical: number;
+  warnings: number;
+  /** False when the Modrinth hash lookup could not run (e.g. offline). */
+  provenanceChecked: boolean;
+  durationMs: number;
+}

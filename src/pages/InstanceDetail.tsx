@@ -11,6 +11,7 @@ import {
   Play,
   Save,
   Settings2,
+  ShieldCheck,
   SquarePen,
   Terminal,
   Trash2,
@@ -23,6 +24,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { Spinner } from "@/components/common/Spinner";
 import { InstanceIcon } from "@/components/instances/InstanceIcon";
 import { InstanceUpdates } from "@/components/instances/InstanceUpdates";
+import { ScanDialog } from "@/components/instances/ScanDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -73,6 +75,7 @@ export function InstanceDetail() {
   const [tab, setTab] = useState("overview");
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -217,6 +220,10 @@ export function InstanceDetail() {
             {isRunning ? "Running" : "Play"}
           </Button>
 
+          <Button variant="outline" title="Scan mods and packs" onClick={() => setScanOpen(true)}>
+            <ShieldCheck /> Scan
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" title="More">
@@ -315,6 +322,14 @@ export function InstanceDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Scan dialog */}
+      <ScanDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        instanceId={instance.id}
+        instanceName={instance.name}
+      />
     </div>
   );
 }
