@@ -164,3 +164,38 @@ pub fn paths() -> AppPaths {
 /// Re-export for integration tests.
 pub use state::AppState as LauncherState;
 pub type SharedState = state::AppState;
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    /// The updater reads `plugins.updater` from `tauri.conf.json` through a
+    /// serde `Deserialize` that ignores unknown fields, so a mistyped key
+    /// would silently turn off the protection it is meant to provide. This
+    /// pins the config against the plugin's own `Config` type — a typo, a
+    /// dropped line, or a plugin upgrade renaming the field all fail here
+    /// instead of shipping a launcher that accepts downgrades.
+    #[test]
+    fn updater_config_enforces_signed_versions() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+        let text = std::fs::read_to_string(&file).expect("read tauri.conf.json");
+        let conf: serde_json::Value = serde_json::from_str(&text).expect("parse tauri.conf.json");
+        let updater = conf
+            .pointer("/plugins/updater")
+            .expect("tauri.conf.json has plugins.updater");
+
+        let updater: tauri_plugin_updater::Config =
+            serde_json::from_value(updater.clone()).expect("updater config deserialises");
+
+        assert!(
+            updater.require_signed_version,
+            "requireSignedVersion must stay on: the update manifest is served over TLS but is \
+             itself unsigned, so only this check binds an announced version to a signed artifact"
+        );
+        assert!(!updater.pubkey.is_empty(), "an updater pubkey is required");
+        assert!(
+            updater.endpoints.iter().all(|url| url.scheme() == "https"),
+            "update endpoints must be https"
+        );
+    }
+}
