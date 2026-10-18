@@ -57,7 +57,7 @@ pub async fn app_info(state: State<'_, AppState>) -> Result<AppInfo> {
 pub async fn system_reveal(app: AppHandle, path: String) -> Result<()> {
     use tauri_plugin_opener::OpenerExt;
     app.opener()
-        .open_path(path, None::<&str>)
+        .open_path(&path, None::<&str>)
         .map_err(|e| crate::error::AetherError::msg(e.to_string()))?;
     Ok(())
 }
@@ -66,6 +66,10 @@ pub async fn system_reveal(app: AppHandle, path: String) -> Result<()> {
 #[tauri::command]
 pub async fn system_open_url(app: AppHandle, url: String) -> Result<()> {
     use tauri_plugin_opener::OpenerExt;
+    let url = url.trim();
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(crate::error::AetherError::msg("Only http:// and https:// URLs are allowed."));
+    }
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|e| crate::error::AetherError::msg(e.to_string()))?;

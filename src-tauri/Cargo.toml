@@ -60,6 +60,7 @@ walkdir = "2"
 # Reads the Modrinth App's SQLite database (app.db) during launcher import;
 # bundled keeps users off a system SQLite install.
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+url = "2.5.8"
 
 [features]
 # Enables Tauri's devtools in release builds for local debugging.

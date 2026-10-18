@@ -13,19 +13,10 @@
     "core:window:allow-close",
     "core:event:default",
     "dialog:default",
-    "fs:default",
     "os:default",
     "opener:default",
     "store:default",
     "updater:default",
-    "process:default",
-    {
-      "identifier": "fs:allow-write-file",
-      "allow": [{ "path": "**" }]
-    },
-    {
-      "identifier": "fs:allow-read-file",
-      "allow": [{ "path": "**" }]
-    }
+    "process:default"
   ]
 }

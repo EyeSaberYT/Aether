@@ -160,11 +160,18 @@ pub async fn install(
         let Some(url) = file.downloads.first() else {
             continue;
         };
-        let dest = game_dir.join(file.path.replace('/', std::path::MAIN_SEPARATOR_STR));
+        // Basic filename guard: the pack must reference files inside `mods/`.
+        // The path is taken from the mrpack index, not user input, but treat it
+        // defensively and don't trust arbitrary paths.
+        let path_str = &file.path;
+        if path_str.contains("..") || path_str.contains('\\') {
+            continue;
+        }
+        let dest = game_dir.join(path_str.replace('/', std::path::MAIN_SEPARATOR_STR));
         let mut spec = DownloadSpec::new(url.clone(), dest).with_size(file.file_size);
         if let Some(sha1) = file.hashes.get("sha1") {
             spec = spec.with_sha1(sha1.clone());
-            tracked.push((file.path.clone(), sha1.clone()));
+            tracked.push((path_str.clone(), sha1.clone()));
         }
         specs.push(spec);
     }
@@ -320,7 +327,15 @@ fn extract_overrides(pack: &Path, game_dir: &Path) -> Result<()> {
             if relative.is_empty() || entry.is_dir() {
                 continue;
             }
-
+            // Disallow `..`, absolute paths, Windows drive letters and
+            // backslashes. The pack format uses forward slashes.
+            if relative.contains("..")
+                || relative.starts_with('/')
+                || relative.starts_with('\\')
+                || relative.contains('\\')
+            {
+                continue;
+            }
             let out_path = game_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
             if let Some(parent) = out_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| {

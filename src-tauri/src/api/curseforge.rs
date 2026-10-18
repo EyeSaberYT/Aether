@@ -752,11 +752,16 @@ fn cf_file_to_version(f: &CfFile, project_id: &str) -> modrinth::Version {
 /// sending it everywhere on those hosts is harmless where enforcement isn't
 /// live yet and future-proof where it is.
 pub fn download_headers(url: &str) -> Vec<(String, String)> {
-    if url.contains("forgecdn.net") {
-        vec![("x-api-key".to_string(), CURSEFORGE_API_KEY.to_string())]
-    } else {
-        vec![]
+    if let Ok(parsed) = ::url::Url::parse(url) {
+        let host = parsed.host_str().unwrap_or("");
+        if parsed.scheme() == "https" && (host == "edge.forgecdn.net" || host.ends_with(".forgecdn.net")) {
+            let key = std::env::var("AETHER_CURSEFORGE_API_KEY").unwrap_or_else(|_| CURSEFORGE_API_KEY.to_string());
+            if !key.is_empty() {
+                return vec![("x-api-key".to_string(), key)];
+            }
+        }
     }
+    vec![]
 }
 
 #[cfg(test)]
