@@ -12,7 +12,7 @@ dark-mode-first interface, first-class mod-loader support and deep Modrinth
 integration, with none of the telemetry, ads or bundled junk found in legacy
 launchers.
 
-> **Status:** early development (`0.1.0`). Instance management, launching,
+> **Status:** early development (`0.1.1`). Instance management, launching,
 > Modrinth and CurseForge browsing, the in-game server list, screenshots and
 > world backups, importing from other launchers, the skin viewer/changer and
 > the in-app updater work end to end.
