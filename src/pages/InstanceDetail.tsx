@@ -423,7 +423,7 @@ function OverviewTab({
         <div>
           <h3 className="text-sm font-semibold">Game files</h3>
           <p className="text-xs text-muted-foreground">
-            Open the .minecraft folder to add files manually.
+            Open the instance folder — mods, logs and saves live there.
           </p>
         </div>
         <Button variant="outline" onClick={onReveal}>

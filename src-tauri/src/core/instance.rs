@@ -86,7 +86,7 @@ pub struct InstanceSettings {
     pub game_args: Vec<String>,
     /// Explicit Java executable for this instance.
     pub java_path: Option<String>,
-    /// Override the game directory (defaults to `<instance>/.minecraft`).
+    /// Override the game directory (defaults to the instance folder itself).
     pub game_dir: Option<String>,
     pub width: u32,
     pub height: u32,

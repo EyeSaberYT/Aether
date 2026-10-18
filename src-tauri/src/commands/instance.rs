@@ -219,11 +219,19 @@ pub async fn instance_duplicate(
     copy.last_played = None;
     copy.play_time_secs = 0;
 
-    // Recursively copy the game directory (minus caches and logs).
+    // Recursively copy the game directory (minus caches, logs and metadata).
     copy_game_dir(
         &game_dir(&state.paths, &source),
         &state.paths.instance_game_dir(&copy.id),
     )?;
+
+    // The game directory is the instance folder now, so the copy already has
+    // its own `icon.png`; re-point the field at it instead of leaving the
+    // duplicate referencing the source instance's folder.
+    copy.icon = resolve_icon(
+        copy.icon.clone(),
+        &state.paths.instance_dir(&copy.id).join("icon.png"),
+    );
 
     {
         let mut store = state.instances.write().await;
@@ -233,10 +241,11 @@ pub async fn instance_duplicate(
     Ok(copy)
 }
 
-/// Copy a directory tree, skipping regenerable folders.
+/// Copy a directory tree, skipping regenerable folders and per-instance
+/// launcher files (the store rewrites `instance.json` right after).
 fn copy_game_dir(from: &std::path::Path, to: &std::path::Path) -> Result<()> {
     std::fs::create_dir_all(to)?;
-    let skip = ["logs", "crash-reports", "screenshots", ".cache"];
+    let skip = ["logs", "crash-reports", "screenshots", ".cache", "instance.json"];
     for entry in walkdir::WalkDir::new(from)
         .into_iter()
         .filter_entry(|e| {

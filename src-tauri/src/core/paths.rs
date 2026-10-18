@@ -10,7 +10,7 @@
 //!   instances.json       instance metadata index
 //!   instances/<id>/
 //!     instance.json      per-instance settings + resolved loaders
-//!     .minecraft/        the actual game directory
+//!     (game files)       the game directory — mods/, logs/, saves/, …
 //!   meta/                cached Mojang metadata (version manifest, etc.)
 //!   java/                launcher-managed Java runtimes
 //!   cache/               downloads, icons & asset cache
@@ -60,9 +60,13 @@ impl AppPaths {
         self.instance_dir(id).join("instance.json")
     }
 
-    /// `<root>/instances/<id>/.minecraft`
+    /// `<root>/instances/<id>` — the instance folder *is* the game directory.
+    ///
+    /// There is no nested `.minecraft/`: `mods/`, `logs/`, `saves/` and the
+    /// rest sit right next to `instance.json`, which keeps every instance
+    /// self-contained and easy to find by hand.
     pub fn instance_game_dir(&self, id: &str) -> PathBuf {
-        self.instance_dir(id).join(".minecraft")
+        self.instance_dir(id)
     }
 
     /// `<root>/meta`
@@ -127,13 +131,17 @@ impl AppPaths {
     /// An explicit `AETHER_DATA_DIR` always wins, and is never migrated into —
     /// if you point it somewhere, that is the whole data root.
     pub fn discover() -> Self {
-        if let Ok(override_dir) = std::env::var("AETHER_DATA_DIR") {
-            return Self::new(override_dir);
-        }
-
-        let data_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
-        migrate_legacy(&data_dir.join("Aether"), &data_dir.join(".aether"));
-        Self::new(data_dir.join(".aether"))
+        let paths = if let Ok(override_dir) = std::env::var("AETHER_DATA_DIR") {
+            Self::new(override_dir)
+        } else {
+            let data_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+            migrate_legacy(&data_dir.join("Aether"), &data_dir.join(".aether"));
+            Self::new(data_dir.join(".aether"))
+        };
+        // Layout normalisation applies to every root, overrides included: it
+        // only rearranges instance folders Aether itself wrote.
+        flatten_instances(&paths.root);
+        paths
     }
 }
 
@@ -191,6 +199,29 @@ fn merge_dir(from: &Path, to: &Path) {
     }
 }
 
+/// Flatten instances written before 0.1.1, which kept their game files in a
+/// nested `.minecraft/` folder. Every entry moves up into the instance folder
+/// itself, which is now the game directory (`instances/<id>/mods`, `/logs`, …).
+///
+/// Best effort, like [`migrate_legacy`]: whatever is still in the way is left
+/// behind rather than destroyed, and the launcher runs off what it can see.
+fn flatten_instances(root: &Path) {
+    let Ok(entries) = std::fs::read_dir(root.join("instances")) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let instance = entry.path();
+        let nested = instance.join(".minecraft");
+        if !nested.is_dir() {
+            continue;
+        }
+        merge_dir(&nested, &instance);
+        // Only succeeds once every entry has been moved out.
+        let _ = std::fs::remove_dir(&nested);
+    }
+}
+
 /// Read JSON from a file, returning `None` when the file does not exist.
 pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>> {
     if !path.exists() {
@@ -226,6 +257,48 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("scratch dir");
         dir
+    }
+
+    #[test]
+    fn flattens_nested_game_folders_into_the_instance() {
+        let base = scratch("flatten");
+        let clean = base.join("instances/abc123");
+        let conflicted = base.join("instances/def456");
+
+        // A pre-0.1.1 instance: everything under a nested `.minecraft/`.
+        std::fs::create_dir_all(clean.join(".minecraft/mods")).expect("nested dirs");
+        std::fs::write(clean.join(".minecraft/mods/sodium.jar"), "jar").expect("mod");
+        std::fs::write(clean.join(".minecraft/options.txt"), "fov:0.0\n").expect("options");
+        std::fs::write(clean.join("instance.json"), "{}").expect("meta");
+
+        // An instance that already has flat content the nested copy collides
+        // with: the existing file wins and the loser is kept, not destroyed.
+        std::fs::create_dir_all(conflicted.join(".minecraft/logs")).expect("nested logs");
+        std::fs::create_dir_all(conflicted.join("logs")).expect("flat logs");
+        std::fs::write(conflicted.join(".minecraft/logs/latest.log"), "old").expect("nested log");
+        std::fs::write(conflicted.join("logs/latest.log"), "new").expect("flat log");
+
+        flatten_instances(&base);
+
+        assert!(
+            clean.join("mods/sodium.jar").is_file(),
+            "game folders must move up into the instance folder"
+        );
+        assert!(clean.join("options.txt").is_file(), "loose files must move up");
+        assert!(clean.join("instance.json").is_file(), "launcher metadata must stay");
+        assert!(!clean.join(".minecraft").exists(), "the nested folder must be gone");
+
+        assert_eq!(
+            std::fs::read_to_string(conflicted.join("logs/latest.log")).unwrap(),
+            "new",
+            "existing flat files win over the nested copies"
+        );
+        assert!(
+            conflicted.join(".minecraft/logs/latest.log").is_file(),
+            "unmovable stragglers must be kept rather than deleted"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

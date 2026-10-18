@@ -164,7 +164,7 @@ its console over `game://output`, followed by `game://exit` when it stops.
   instances.json       instance index
   instances/<id>/
     instance.json      per-instance settings
-    .minecraft/        the game directory
+    (game files)       the game directory: mods/, logs/, saves/, …
   meta/                cached Mojang metadata
   java/                launcher-managed runtimes
   cache/               downloads & asset cache
@@ -172,7 +172,9 @@ its console over `game://output`, followed by `game://exit` when it stops.
 ```
 
 Data written by earlier versions (`Aether/`) is moved into `.aether`
-automatically on first start. Set `AETHER_DATA_DIR` to relocate everything.
+automatically on first start. Instances that still keep their game files in a
+nested `.minecraft/` folder are flattened into the instance folder the same
+way. Set `AETHER_DATA_DIR` to relocate everything.
 
 ---
 
