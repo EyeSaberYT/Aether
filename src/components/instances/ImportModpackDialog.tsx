@@ -92,8 +92,8 @@ export function ImportModpackDialog({ open, onOpenChange }: ImportModpackDialogP
         <DialogHeader>
           <DialogTitle>Import a modpack</DialogTitle>
           <DialogDescription>
-            Open a <code className="text-xs">.mrpack</code> from Modrinth or a CurseForge
-            modpack <code className="text-xs">.zip</code>.
+            Open a <code className="text-xs">.mrpack</code> from Modrinth or a CurseForge modpack{" "}
+            <code className="text-xs">.zip</code>.
           </DialogDescription>
         </DialogHeader>
 
@@ -103,7 +103,11 @@ export function ImportModpackDialog({ open, onOpenChange }: ImportModpackDialogP
             disabled={loading}
             className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-12 transition-colors hover:border-primary/50 hover:bg-accent/40"
           >
-            {loading ? <Spinner className="h-6 w-6" /> : <FolderOpen className="h-7 w-7 text-muted-foreground" />}
+            {loading ? (
+              <Spinner className="h-6 w-6" />
+            ) : (
+              <FolderOpen className="h-7 w-7 text-muted-foreground" />
+            )}
             <span className="text-sm font-medium">
               {loading ? "Reading pack…" : "Choose a modpack file"}
             </span>
@@ -131,9 +135,7 @@ export function ImportModpackDialog({ open, onOpenChange }: ImportModpackDialogP
               )}
             </div>
 
-            {preview.summary && (
-              <p className="text-sm text-muted-foreground">{preview.summary}</p>
-            )}
+            {preview.summary && <p className="text-sm text-muted-foreground">{preview.summary}</p>}
 
             <div className="space-y-2">
               <Label htmlFor="pack-instance-name">Instance name</Label>

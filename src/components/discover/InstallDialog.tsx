@@ -82,14 +82,18 @@ export function InstallDialog({ open, onOpenChange, project }: InstallDialogProp
       .then((list) => {
         if (cancelled) return;
         setVersions(list);
-        if (list.length > 0 && !versionId) setVersionId(list[0].id);
+        // Fall back to the first version, but never clobber an explicit
+        // choice that's still valid for the (possibly new) instance.
+        setVersionId((current) =>
+          current && list.some((v) => v.id === current) ? current : (list[0]?.id ?? ""),
+        );
       })
       .catch(() => !cancelled && setVersions([]))
       .finally(() => !cancelled && setLoadingVersions(false));
     return () => {
       cancelled = true;
     };
-  }, [open, project.id, isModpack, isLoaderAgnostic, selected?.gameVersion, selected?.loader, versionId]);
+  }, [open, project.id, isModpack, isLoaderAgnostic, selected?.gameVersion, selected?.loader]);
 
   async function handleInstall() {
     setBusy(true);
