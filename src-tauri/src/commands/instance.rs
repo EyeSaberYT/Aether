@@ -47,6 +47,38 @@ pub async fn instance_get(state: State<'_, AppState>, id: String) -> Result<Inst
     Ok(state.instances.read().await.get(&id)?.clone())
 }
 
+/// Resolve a user-chosen icon into something an instance can store.
+///
+/// An icon is either a short piece of text (an emoji or a couple of letters,
+/// stored verbatim) or a path to an image file. Image files are copied into
+/// the instance's own folder so the icon keeps working even if the original is
+/// later moved or deleted; the copy's absolute path is what gets stored.
+///
+/// `target` is the file the image should be copied to (e.g. `<instance>/icon.png`).
+/// A failed copy is not fatal: the original path is stored instead, which still
+/// renders through the asset protocol for as long as the file exists.
+pub(crate) fn resolve_icon(
+    icon: Option<String>,
+    target: &std::path::Path,
+) -> Option<String> {
+    let icon = icon?;
+    let source = PathBuf::from(&icon);
+    if !source.is_file() {
+        // Not a file on disk: an emoji or short label, kept as-is.
+        return Some(icon);
+    }
+    if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::copy(&source, target) {
+        Ok(_) => Some(target.to_string_lossy().to_string()),
+        Err(error) => {
+            log::warn!("icon: could not copy {}: {error}", source.display());
+            Some(icon)
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn instance_create(
     app: AppHandle,
@@ -59,7 +91,7 @@ pub async fn instance_create(
     }
 
     let mut instance = Instance::new(name, &args.game_version, args.loader);
-    instance.icon = args.icon;
+    instance.icon = resolve_icon(args.icon, &state.paths.instance_dir(&instance.id).join("icon.png"));
     instance.group = args.group;
     instance.tags = args.tags;
     instance.loader_version = args.loader_version.clone();
@@ -133,7 +165,19 @@ pub async fn instance_create(
 }
 
 #[tauri::command]
-pub async fn instance_update(state: State<'_, AppState>, instance: Instance) -> Result<Instance> {
+pub async fn instance_update(state: State<'_, AppState>, mut instance: Instance) -> Result<Instance> {
+    // A custom image chosen on the settings page is copied into the instance
+    // folder here, matching create/import. Once stored, the icon already points
+    // at that copy, so resolving again is a no-op rather than a self-copy.
+    if let Some(icon) = &instance.icon {
+        if PathBuf::from(icon).is_file() {
+            let target = state.paths.instance_dir(&instance.id).join("icon.png");
+            if *icon != target {
+                instance.icon = resolve_icon(Some(icon.clone()), &target);
+            }
+        }
+    }
+
     let mut store = state.instances.write().await;
     *store.get_mut(&instance.id)? = instance.clone();
     store.persist(&state.paths, &instance.id)?;

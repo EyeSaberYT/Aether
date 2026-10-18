@@ -35,6 +35,10 @@ import {
   type UpdateInfo,
   type VersionOption,
   type WorldsOverview,
+  type ImportCandidate,
+  type ImportOutcome,
+  type ImportRequest,
+  type ImportScan,
 } from "@/lib/tauri";
 
 // ---------------------------------------------------------------------------
@@ -95,6 +99,13 @@ export const instances = {
     invoke<string>("instance_content_dir_name", { projectType }),
   defaultSettings: () => invoke<InstanceSettings>("instance_default_settings"),
   slug: (name: string) => invoke<string>("instance_slug", { name }),
+};
+
+export const importApi = {
+  scan: () => invoke<ImportScan>("import_scan"),
+  inspect: (path: string) => invoke<ImportCandidate[]>("import_inspect", { path }),
+  importInstances: (requests: ImportRequest[]) =>
+    invoke<ImportOutcome>("import_instances", { requests }),
 };
 
 export const modpacks = {

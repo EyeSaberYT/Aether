@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod backups;
+pub mod import;
 pub mod instance;
 pub mod java;
 pub mod launch;

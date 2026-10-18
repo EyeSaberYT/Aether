@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { IconPicker } from "@/components/instances/IconPicker";
 import { versions as versionsApi } from "@/lib/api";
 import { loaderLabel } from "@/lib/format";
 import type { LoaderVersion, VersionOption } from "@/lib/tauri";
@@ -43,6 +44,7 @@ export function NewInstanceDialog({ open, onOpenChange }: NewInstanceDialogProps
   const create = useInstances((state) => state.create);
 
   const [name, setName] = useState("");
+  const [icon, setIcon] = useState<string | null>(null);
   const [gameVersion, setGameVersion] = useState("");
   const [loader, setLoader] = useState("vanilla");
   const [loaderVersion, setLoaderVersion] = useState("");
@@ -58,6 +60,7 @@ export function NewInstanceDialog({ open, onOpenChange }: NewInstanceDialogProps
   useEffect(() => {
     if (open) {
       setName("");
+      setIcon(null);
       setLoader("vanilla");
       setLoaderVersion("");
       setInstallLoader(true);
@@ -99,7 +102,7 @@ export function NewInstanceDialog({ open, onOpenChange }: NewInstanceDialogProps
         setLoaderVersion((current) =>
           list.some((entry) => entry.version === current)
             ? current
-            : (list.find((entry) => entry.stable) ?? list[0])?.version ?? "",
+            : ((list.find((entry) => entry.stable) ?? list[0])?.version ?? ""),
         );
       })
       .catch((error) => {
@@ -127,6 +130,7 @@ export function NewInstanceDialog({ open, onOpenChange }: NewInstanceDialogProps
         name: name.trim(),
         gameVersion,
         loader,
+        icon,
         loaderVersion: loader === "vanilla" ? null : loaderVersion || null,
         installLoader: loader !== "vanilla" && installLoader,
       });
@@ -162,14 +166,20 @@ export function NewInstanceDialog({ open, onOpenChange }: NewInstanceDialogProps
             />
           </div>
 
+          <div className="space-y-2">
+            <Label>Icon</Label>
+            <IconPicker
+              value={icon}
+              onChange={setIcon}
+              name={name || "New instance"}
+              id={name || "new"}
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Minecraft version</Label>
-              <Select
-                value={gameVersion}
-                onValueChange={setGameVersion}
-                disabled={loadingVersions}
-              >
+              <Select value={gameVersion} onValueChange={setGameVersion} disabled={loadingVersions}>
                 <SelectTrigger>
                   <SelectValue placeholder={loadingVersions ? "Loading…" : "Select"} />
                 </SelectTrigger>
@@ -212,9 +222,7 @@ export function NewInstanceDialog({ open, onOpenChange }: NewInstanceDialogProps
                   disabled={loadingLoader || loaderVersions.length === 0}
                 >
                   <SelectTrigger>
-                    <SelectValue
-                      placeholder={loadingLoader ? "Loading…" : "Latest compatible"}
-                    />
+                    <SelectValue placeholder={loadingLoader ? "Loading…" : "Latest compatible"} />
                   </SelectTrigger>
                   <SelectContent>
                     {loaderVersions.map((entry) => (

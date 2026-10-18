@@ -35,6 +35,10 @@ pub enum AetherError {
 
     #[error("Archive error: {0}")]
     Zip(#[from] zip::result::ZipError),
+
+    /// Reading another launcher's SQLite database (the Modrinth App).
+    #[error("We couldn't read another launcher's data: {0}")]
+    Database(#[from] rusqlite::Error),
 }
 
 impl AetherError {

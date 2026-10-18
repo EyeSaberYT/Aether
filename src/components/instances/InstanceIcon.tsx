@@ -1,8 +1,11 @@
 import { cn } from "@/lib/utils";
+import { useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 /**
- * Renders an instance's icon. The value can be an emoji, a couple of letters or
- * an image URL; anything else falls back to a deterministic gradient monogram.
+ * Renders an instance's icon. The value can be an emoji, a couple of letters,
+ * an image URL or a local path; anything else falls back to a deterministic
+ * gradient monogram.
  */
 export function InstanceIcon({
   icon,
@@ -15,33 +18,49 @@ export function InstanceIcon({
   id: string;
   className?: string;
 }) {
+  const [errored, setErrored] = useState(false);
   const base = cn(
     "flex shrink-0 select-none items-center justify-center overflow-hidden rounded-xl font-semibold",
     className,
   );
 
-  if (icon && /^https?:\/\//i.test(icon)) {
+  const isHttp = icon && /^https?:\/\//i.test(icon);
+  const isPath =
+    !errored &&
+    icon &&
+    !isHttp &&
+    (/^(?:[a-zA-Z]:[\\/]|\/)/.test(icon) || icon.startsWith("file:"));
+  const localPath = isPath ? (icon?.startsWith("file:") ? icon.slice(5) : icon) : null;
+
+  if (localPath) {
     return (
       <div className={cn(base, "bg-muted")}>
-        <img src={icon} alt={name} className="h-full w-full object-cover" loading="lazy" />
+        <img
+          src={convertFileSrc(localPath)}
+          alt={name}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={() => setErrored(true)}
+        />
       </div>
     );
   }
 
-  const label = icon?.trim() || monogram(name);
-  const isEmoji = icon ? !/[a-z0-9]/i.test(icon) || icon.length <= 2 : false;
+  const label = (errored ? null : icon)?.trim() || monogram(name);
+  const isEmoji = label ? !/[a-z0-9]/i.test(label) || label.length <= 2 : false;
 
   return (
     <div className={base} style={{ background: gradientFor(id) }}>
-      <span className={cn(isEmoji ? "text-2xl" : "text-sm uppercase tracking-wide")}>
-        {label}
-      </span>
+      <span className={cn(isEmoji ? "text-2xl" : "text-sm uppercase tracking-wide")}>{label}</span>
     </div>
   );
 }
 
 function monogram(name: string): string {
-  const parts = name.replace(/[^a-zA-Z0-9 ]/g, " ").trim().split(/\s+/);
+  const parts = name
+    .replace(/[^a-zA-Z0-9 ]/g, " ")
+    .trim()
+    .split(/\s+/);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2);
   return parts[0][0] + parts[1][0];

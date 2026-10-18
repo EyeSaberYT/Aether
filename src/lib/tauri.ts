@@ -294,6 +294,67 @@ export interface ModpackPreview {
   dependencies: Record<string, string>;
 }
 
+// ---- Import from other launchers ------------------------------------------
+
+/** Launchers (and fallbacks) the importer knows how to read instances from. */
+export type ImportSource = "prism" | "multimc" | "curseforge" | "modrinth" | "minecraft" | "folder";
+
+/** A detected installation of another launcher on this machine. */
+export interface ImportSourceInfo {
+  kind: ImportSource;
+  label: string;
+  path: string;
+  found: boolean;
+  note: string | null;
+}
+
+/** One instance discovered in another launcher's data directory. */
+export interface ImportCandidate {
+  id: string;
+  kind: ImportSource;
+  source: string;
+  name: string;
+  path: string;
+  icon: string | null;
+  gameVersion: string | null;
+  loader: LoaderKind | null;
+  loaderVersion: string | null;
+  size: number;
+  mods: number;
+  modified: number | null;
+  note: string | null;
+}
+
+/** Result of a full scan: which launchers were found and what's inside them. */
+export interface ImportScan {
+  sources: ImportSourceInfo[];
+  candidates: ImportCandidate[];
+}
+
+/** What the dialog asks Aether to create for one imported instance. */
+export interface ImportRequest {
+  source: ImportSource;
+  name: string;
+  path: string;
+  gameVersion: string;
+  loader: LoaderKind;
+  loaderVersion: string | null;
+  icon: string | null;
+}
+
+/** One item that could not be imported, with the reason. */
+export interface ImportFailure {
+  name: string;
+  path: string;
+  error: string;
+}
+
+/** Outcome of a bulk import: successes plus per-item failures. */
+export interface ImportOutcome {
+  imported: Instance[];
+  failed: ImportFailure[];
+}
+
 // ---- Modrinth -------------------------------------------------------------
 
 export interface SearchHit {

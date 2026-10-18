@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { LibraryBig, PackagePlus, Plus, Search } from "lucide-react";
+import { Download, FolderInput, LibraryBig, PackagePlus, Plus, Search } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -12,10 +12,17 @@ import {
   type ViewMode,
 } from "@/components/common/ViewToggle";
 import { ImportModpackDialog } from "@/components/instances/ImportModpackDialog";
+import { ImportLauncherDialog } from "@/components/instances/ImportLauncherDialog";
 import { InstanceCard, InstanceRow } from "@/components/instances/InstanceCard";
 import { NewInstanceDialog } from "@/components/instances/NewInstanceDialog";
 import { ScanDialog } from "@/components/instances/ScanDialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLaunchInstance } from "@/hooks/useLaunchInstance";
@@ -34,6 +41,7 @@ export function Library() {
 
   const [query, setQuery] = useState("");
   const [newOpen, setNewOpen] = useState(false);
+  const [importLauncherOpen, setImportLauncherOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   // One scan dialog serves the whole library; it opens for whichever instance
   // was picked, rather than one dialog living on every card.
@@ -61,9 +69,23 @@ export function Library() {
         actions={
           <>
             <ViewToggle view={view} onChange={setStoredView} label="Library layout" />
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <PackagePlus /> Import pack
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download /> Import
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => setImportLauncherOpen(true)}>
+                  <FolderInput className="mr-2 h-4 w-4" />
+                  From another launcher
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                  <PackagePlus className="mr-2 h-4 w-4" />
+                  Modpack file (.mrpack)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="brand" onClick={() => setNewOpen(true)}>
               <Plus /> New instance
             </Button>
@@ -136,6 +158,7 @@ export function Library() {
 
       <NewInstanceDialog open={newOpen} onOpenChange={setNewOpen} />
       <ImportModpackDialog open={importOpen} onOpenChange={setImportOpen} />
+      <ImportLauncherDialog open={importLauncherOpen} onOpenChange={setImportLauncherOpen} />
       <ScanDialog
         open={scanTarget !== null}
         onOpenChange={(next) => {

@@ -26,6 +26,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { Spinner } from "@/components/common/Spinner";
 import { InstanceIcon } from "@/components/instances/InstanceIcon";
+import { IconPicker } from "@/components/instances/IconPicker";
 import { InstanceUpdates } from "@/components/instances/InstanceUpdates";
 import { ScanDialog } from "@/components/instances/ScanDialog";
 import { ScreenshotsTab } from "@/components/instances/ScreenshotsTab";
@@ -650,11 +651,12 @@ function SettingsTab({
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             />
           </Field>
-          <Field label="Icon (emoji or short text)">
-            <Input
-              value={draft.icon ?? ""}
-              placeholder="🌲"
-              onChange={(event) => setDraft({ ...draft, icon: event.target.value || null })}
+          <Field label="Icon" className="sm:col-span-2">
+            <IconPicker
+              value={draft.icon}
+              name={draft.name}
+              id={instance.id}
+              onChange={(icon) => setDraft({ ...draft, icon })}
             />
           </Field>
           <Field label="Group">

@@ -132,6 +132,10 @@ pub fn run() {
             commands::backups::world_backup_delete,
             commands::screenshots::screenshots_list,
             commands::screenshots::screenshot_delete,
+            // ---- import -----------------------------------------------------
+            commands::import::import_scan,
+            commands::import::import_inspect,
+            commands::import::import_instances,
             // ---- java ------------------------------------------------------
             commands::java::java_list,
             commands::java::java_detect,
