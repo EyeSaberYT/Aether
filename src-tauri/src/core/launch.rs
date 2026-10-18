@@ -295,11 +295,33 @@ pub async fn launch(request: LaunchRequest<'_>) -> Result<LaunchedProcess> {
         finished: true,
     });
 
+    // Strip tokens from the returned argument list before passing to the
+    // frontend (they aren't needed for display and shouldn't be exposed).
+    let mut safe_args = args.clone();
+    for a in &mut safe_args {
+        if !account.access_token.is_empty() && a.contains(&account.access_token) {
+            *a = a.replace(&account.access_token, "****");
+        }
+        if let Some(rt) = &account.refresh_token {
+            if !rt.is_empty() && a.contains(rt) {
+                *a = a.replace(rt, "****");
+            }
+        }
+        if let Some(idx) = a.find("token:") {
+            let rest = &a[idx + 6..];
+            if !rest.is_empty() && rest.len() > 4 {
+                a.replace_range(idx + 6.., "****");
+            } else {
+                *a = a.replace(&a[idx..], "token:****");
+            }
+        }
+    }
+
     Ok(LaunchedProcess {
         pid,
         log_file: log_file.to_string_lossy().to_string(),
         command: java_path.to_string_lossy().to_string(),
-        arguments: args,
+        arguments: safe_args,
     })
 }
 

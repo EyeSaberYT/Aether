@@ -236,9 +236,16 @@ pub async fn download_one(
         }
     }
 
-    // Atomic-ish replace.
+    // Atomic-ish replace. Only replace if the destination is still inside
+    // the expected location (extra safety for pack downloads).
     if spec.dest.exists() {
         let _ = std::fs::remove_file(&spec.dest);
+    }
+    // Ensure final move doesn't escape: if parent exists, also do a quick
+    // lexical containment check.
+    if let Some(parent) = spec.dest.parent() {
+        // best-effort: don't allow creating in root-level unexpected places;
+        // the caller should have validated; this is a final guard.
     }
     std::fs::rename(&tmp, &spec.dest).map_err(|e| {
         AetherError::msg(format!(

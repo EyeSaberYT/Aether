@@ -170,11 +170,19 @@ pub fn extract_overrides(pack: &Path, game_dir: &Path, overrides_dir: &str) -> R
         if relative.is_empty() || entry.is_dir() {
             continue;
         }
-        // Zip-slip guard: a hostile archive must not write outside the game dir.
-        if relative.split('/').any(|part| part == "..") {
+        if relative.contains("..")
+            || relative.starts_with('/')
+            || relative.starts_with('\\')
+            || relative.contains('\\')
+        {
             continue;
         }
-
+        let first = relative.chars().next();
+        if let Some(c) = first {
+            if c.is_ascii_alphabetic() && relative.chars().nth(1) == Some(':') {
+                continue;
+            }
+        }
         let out_path = game_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
         if let Some(parent) = out_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {

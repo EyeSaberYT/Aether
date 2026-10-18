@@ -167,7 +167,39 @@ pub async fn install(
         if path_str.contains("..") || path_str.contains('\\') {
             continue;
         }
+        if path_str.starts_with('/') || path_str.starts_with('\\') {
+            continue;
+        }
+        if let Some(c) = path_str.chars().next() {
+            if c.is_ascii_alphabetic() && path_str.chars().nth(1) == Some(':') {
+                continue;
+            }
+        }
         let dest = game_dir.join(path_str.replace('/', std::path::MAIN_SEPARATOR_STR));
+        // Containment check: ensure dest stays inside game_dir.
+        if let Ok(canon_dest) = dest.canonicalize() {
+            if let Ok(canon_root) = game_dir.canonicalize() {
+                if !canon_dest.starts_with(&canon_root) {
+                    continue;
+                }
+            }
+        } else {
+            let mut rooted = true;
+            let mut check = dest.as_path();
+            while let Some(parent) = check.parent() {
+                if parent.as_os_str().is_empty() {
+                    rooted = false;
+                    break;
+                }
+                if parent == game_dir {
+                    break;
+                }
+                check = parent;
+            }
+            if !rooted {
+                continue;
+            }
+        }
         let mut spec = DownloadSpec::new(url.clone(), dest).with_size(file.file_size);
         if let Some(sha1) = file.hashes.get("sha1") {
             spec = spec.with_sha1(sha1.clone());
