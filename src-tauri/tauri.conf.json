@@ -28,7 +28,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://cdn.modrinth.com https://*.modrinth.com https://textures.minecraft.net https://mc-heads.net data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https://api.modrinth.com https://cdn.modrinth.com https://launchermeta.mojang.com https://piston-meta.mojang.com https://resources.download.minecraft.net https://meta.fabricmc.net https://meta.quiltmc.org https://maven.neoforged.net https://maven.minecraftforge.net https://api.minecraftservices.com; font-src 'self' data:"
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://cdn.modrinth.com https://*.modrinth.com https://textures.minecraft.net https://skinmc.net data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https://api.modrinth.com https://cdn.modrinth.com https://launchermeta.mojang.com https://piston-meta.mojang.com https://resources.download.minecraft.net https://meta.fabricmc.net https://meta.quiltmc.org https://maven.neoforged.net https://maven.minecraftforge.net https://api.minecraftservices.com; font-src 'self' data:"
     }
   },
   "bundle": {

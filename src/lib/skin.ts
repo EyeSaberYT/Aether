@@ -83,3 +83,26 @@ export function headCrop(sheetUrl: string, sheetHeight: number | null): CSSPrope
     backgroundRepeat: "no-repeat, no-repeat",
   };
 }
+
+// ---------------------------------------------------------------------------
+// Rendered heads
+// ---------------------------------------------------------------------------
+
+/** The service that renders a player's head from their username. */
+const HEAD_SERVICE = "https://skinmc.net/api/v1/face/username";
+
+/** Edge length of a rendered head, in pixels. */
+const DEFAULT_FACE_SIZE = 600;
+
+/**
+ * A rendered front view of a player's head.
+ *
+ * Rendered by the service rather than cropped out of the sheet in CSS: it
+ * composites the hat layer for us and only needs a username, so it also covers
+ * accounts whose texture the launcher never managed to fetch. The size is the
+ * square edge in pixels — 600 keeps the head crisp at every size Aether draws
+ * it, from the account menu up to a full profile view.
+ */
+export function faceUrl(username: string, size: number = DEFAULT_FACE_SIZE): string {
+  return `${HEAD_SERVICE}/${encodeURIComponent(username)}/${size}`;
+}

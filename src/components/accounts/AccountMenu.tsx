@@ -14,7 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { initials } from "@/lib/format";
-import { headCrop } from "@/lib/skin";
+import { faceUrl, headCrop } from "@/lib/skin";
 import type { AccountKind } from "@/lib/tauri";
 import { activeAccount, useAccounts } from "@/store/useAccounts";
 
@@ -43,12 +43,7 @@ export function AccountMenu() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex w-full items-center gap-3 rounded-lg border border-transparent p-2 text-left transition-colors hover:border-border hover:bg-accent/50">
-            <SkinAvatar
-              uuid={account.uuid}
-              name={account.username}
-              kind={account.kind}
-              skinUrl={account.skinUrl}
-            />
+            <SkinAvatar name={account.username} kind={account.kind} skinUrl={account.skinUrl} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{account.username}</p>
               <p className="truncate text-xs text-muted-foreground">
@@ -68,7 +63,6 @@ export function AccountMenu() {
               }}
             >
               <SkinAvatar
-                uuid={entry.uuid}
                 name={entry.username}
                 kind={entry.kind}
                 skinUrl={entry.skinUrl}
@@ -101,29 +95,28 @@ export function AccountMenu() {
 }
 
 /**
- * A Minecraft skin sheet that has been resolved, or is being resolved, for
- * display.
+ * How an image the launcher wants to draw resolved: not asked for, still in
+ * flight, loaded, or refused.
  *
- * `height` is the sheet's real pixel height in pixels: sheets come in two
- * sizes (64x64 modern, 64x32 legacy) and the head sits at a different height
- * in each, so the crop needs it.
+ * `height` is only meaningful once loaded, and only matters for skin sheets —
+ * their two layouts (64x64 modern, 64x32 legacy) put the head at different
+ * heights.
  */
-type SkinTexture =
+type ImageLoad =
   | { state: "absent" }
   | { state: "pending" }
   | { state: "loaded"; height: number }
   | { state: "broken" };
 
 /**
- * Preload a skin sheet and report how tall it turned out to be.
+ * Preload an image and report how it went, plus how tall it turned out.
  *
- * The head is cropped out of the sheet with CSS rather than by a service, and
- * the only way to learn a sheet's dimensions before layout is to read them off
- * a hidden `Image`. A load failure is reported as `broken` so the caller can
- * fall back instead of rendering an empty circle.
+ * The height is the only way to tell a modern skin sheet from a legacy one
+ * before layout, and the plain failure is what lets the caller fall back
+ * instead of rendering an empty circle.
  */
-function useSkinTexture(url: string | null | undefined): SkinTexture {
-  const [texture, setTexture] = useState<SkinTexture>(
+function useImageLoad(url: string | null | undefined): ImageLoad {
+  const [texture, setTexture] = useState<ImageLoad>(
     url ? { state: "pending" } : { state: "absent" },
   );
 
@@ -163,39 +156,47 @@ function useSkinTexture(url: string | null | undefined): SkinTexture {
 }
 
 /**
- * Player head rendered from Minecraft skins, falling back to initials.
+ * Player head, falling back through the player's own texture to initials.
  *
- * The texture stored on the account wins: it comes straight from Mojang's
- * profile, so it always matches the player's current skin and needs no
- * third-party renderer. The head service is only reached for accounts with no
- * texture on file — or one that failed to load — and offline profiles go
- * straight to initials because they have no authentic skin to show.
+ * Heads are rendered by skinmc.net from the username: it composites the hat
+ * layer and works for any online account, including one whose sheet the
+ * launcher never managed to fetch. The player's own texture fills the circle
+ * while that request is in flight — it is the same skin and needs no network —
+ * and stays if the request fails, so an unreachable service costs nothing.
  *
- * Note the branch below renders exactly one of {texture, image} alongside a
- * fallback: Radix only hides `AvatarFallback` while an `AvatarImage` is
- * loaded, and two `w-full` children in the flex row would each take half the
- * circle.
+ * Offline profiles go straight to initials: their username belongs to nobody,
+ * so a lookup would show the face of whoever really holds the name.
+ *
+ * Note the pairs below are the only place two children share the circle, which
+ * is what Radix's `Avatar` is built for: it hides `AvatarFallback` once the
+ * image loads. Two plain fill elements would each take half of it instead.
  */
 export function SkinAvatar({
-  uuid,
   name,
   kind,
   skinUrl,
   className,
 }: {
-  uuid: string;
   name: string;
   kind: AccountKind;
   skinUrl: string | null;
   className?: string;
 }) {
-  const texture = useSkinTexture(skinUrl);
+  const texture = useImageLoad(skinUrl);
+  const head = kind === "offline" ? null : faceUrl(name);
+  const face = useImageLoad(head);
 
-  // The sheet takes over as soon as it exists; only give up on it if it fails.
+  if (head !== null && face.state === "loaded") {
+    return (
+      <Avatar className={className}>
+        <AvatarImage src={head} alt={name} loading="lazy" />
+        <AvatarFallback>{initials(name)}</AvatarFallback>
+      </Avatar>
+    );
+  }
+
+  // The sheet stands in until the render arrives; only give up on it if it fails.
   const sheetUrl = skinUrl && texture.state !== "broken" ? skinUrl : null;
-  // An offline profile has no authentic skin, so its initials are the honest
-  // answer rather than an arbitrary default head.
-  const useService = sheetUrl === null && kind !== "offline";
 
   if (sheetUrl !== null) {
     return (
@@ -214,9 +215,6 @@ export function SkinAvatar({
 
   return (
     <Avatar className={className}>
-      {useService && (
-        <AvatarImage src={`https://mc-heads.net/avatar/${uuid}/64`} alt={name} loading="lazy" />
-      )}
       <AvatarFallback>{initials(name)}</AvatarFallback>
     </Avatar>
   );

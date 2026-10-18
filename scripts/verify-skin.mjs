@@ -22,7 +22,7 @@ import ts from "typescript";
  * import it without a build step or an undeclared dependency. `import type` is
  * always erased, so nothing reaches out for React at runtime.
  */
-async function loadHeadCrop() {
+async function loadSkinModule() {
   const url = new URL("../src/lib/skin.ts", import.meta.url);
   const source = await readFile(url, "utf8");
   const { outputText, diagnostics } = ts.transpileModule(source, {
@@ -41,7 +41,7 @@ async function loadHeadCrop() {
   }
 
   const asDataUrl = `data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`;
-  return (await import(asDataUrl)).headCrop;
+  return import(asDataUrl);
 }
 
 /** Split a `background-position`/`background-size` shorthand list into layers. */
@@ -96,7 +96,7 @@ function expectTrue(label, condition, detail = "") {
   if (!condition) failures.push(`${label}${detail ? `: ${detail}` : ""}`);
 }
 
-const headCrop = await loadHeadCrop();
+const { headCrop, faceUrl } = await loadSkinModule();
 
 // CSS paints the FIRST listed layer on top, and the hat must be that layer —
 // otherwise the face hides it and skins with hair render flat. Legacy sheets
@@ -159,6 +159,24 @@ if (legacy.length === 1) {
   );
   expectEqual("legacy face lands on the origin", map(legacy[0], legacyBox, sheet, 8, 8).x, 0);
 }
+
+// The head render is keyed by username rather than uuid, so the name has to
+// survive URL encoding and the size has to be the one that was requested.
+expectTrue(
+  "face url is the documented one",
+  faceUrl("Notch") === "https://skinmc.net/api/v1/face/username/Notch/600",
+  faceUrl("Notch"),
+);
+expectEqual(
+  "face url honours an explicit size",
+  parseFloat(faceUrl("Notch", 64).split("/").pop()),
+  64,
+);
+expectTrue(
+  "face url encodes the username",
+  faceUrl("a b/c").endsWith("/a%20b%2Fc/600"),
+  faceUrl("a b/c"),
+);
 
 if (failures.length > 0) {
   console.error(`skin crop: ${failures.length} of ${checks} checks failed`);
