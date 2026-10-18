@@ -38,6 +38,7 @@ impl AppState {
             .timeout(std::time::Duration::from_secs(120))
             .connect_timeout(std::time::Duration::from_secs(20))
             .pool_max_idle_per_host(16)
+            .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .map_err(crate::error::AetherError::from)?;
 

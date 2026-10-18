@@ -84,11 +84,25 @@ pub async fn launch_preview(state: State<'_, AppState>, id: String) -> Result<St
         .arguments
         .iter()
         .map(|a| {
-            if a.contains(' ') {
-                format!("\"{a}\"")
-            } else {
-                a.clone()
+            let mut s = a.clone();
+            // Redact any occurrence of tokens.
+            if !account.access_token.is_empty() && s.contains(&account.access_token) {
+                s = s.replace(&account.access_token, "****");
             }
+            if let Some(rt) = &account.refresh_token {
+                if !rt.is_empty() && s.contains(rt) {
+                    s = s.replace(rt, "****");
+                }
+            }
+            if let Some(idx) = s.find("token:") {
+                let rest = &s[idx + 6..];
+                if !rest.is_empty() && rest.len() > 4 {
+                    s.replace_range(idx + 6.., "****");
+                } else {
+                    s = s.replace(&s[idx..], "token:****");
+                }
+            }
+            if s.contains(' ') { format!("\"{s}\"") } else { s }
         })
         .collect::<Vec<_>>()
         .join(" ");

@@ -466,7 +466,15 @@ pub async fn instance_toggle_content(
     let source = PathBuf::from(&path);
 
     // Guard against path traversal: the file must live inside the instance.
-    if !source.starts_with(&root) {
+    // Use lexical containment first; if it fails due to symlinks/junctions the
+    // canonical check below is a best-effort second guard.
+    let mut ok = source.starts_with(&root);
+    if !ok {
+        if let (Ok(canon_src), Ok(canon_root)) = (source.canonicalize(), root.canonicalize()) {
+            ok = canon_src.starts_with(&canon_root);
+        }
+    }
+    if !ok {
         return Err(AetherError::msg("That file isn't part of this instance."));
     }
 
@@ -492,7 +500,13 @@ pub async fn instance_delete_content(
     let root = game_dir(&state.paths, &instance);
     let target = PathBuf::from(&path);
 
-    if !target.starts_with(&root) {
+    let mut ok = target.starts_with(&root);
+    if !ok {
+        if let (Ok(canon_t), Ok(canon_root)) = (target.canonicalize(), root.canonicalize()) {
+            ok = canon_t.starts_with(&canon_root);
+        }
+    }
+    if !ok {
         return Err(AetherError::msg("That file isn't part of this instance."));
     }
     if target.exists() {
@@ -523,7 +537,21 @@ pub async fn instance_import_files(
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .ok_or_else(|| AetherError::msg("invalid file name"))?;
-        std::fs::copy(&source, dest_dir.join(name))?;
+        // Restrict filename to a single component.
+        if name.contains('/') || name.contains('\\') || name.contains("..") {
+            continue;
+        }
+        let dest = dest_dir.join(&name);
+        let mut ok = dest.starts_with(&dest_dir);
+        if !ok {
+            if let (Ok(canon_d), Ok(canon_dd)) = (dest.canonicalize(), dest_dir.canonicalize()) {
+                ok = canon_d.starts_with(&canon_dd);
+            }
+        }
+        if !ok {
+            continue;
+        }
+        std::fs::copy(&source, dest)?;
         copied += 1;
     }
     Ok(copied)

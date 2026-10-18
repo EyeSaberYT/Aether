@@ -320,16 +320,31 @@ fn pump_output<R>(
     tokio::spawn(async move {
         let mut lines = tokio::io::BufReader::new(reader).lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            let mut redacted = line.clone();
             {
                 let mut file = log_handle.lock().await;
-                let _ = file.write_all(line.as_bytes()).await;
+                if redacted.contains("access_token") || redacted.contains("auth_access_token") {
+                    // best-effort mask common token patterns
+                    if let Some(pos) = redacted.find("token:") {
+                        let end = redacted[pos + 6..].find(|c: char| c.is_whitespace() || c == '"' || c == '\'').map(|p| pos + 6 + p).unwrap_or(redacted.len());
+                        redacted.replace_range(pos + 6..end, "****");
+                    }
+                    if let Some(pos) = redacted.find("access_token") {
+                        let mut start = pos + "access_token".len();
+                        if redacted[start..].starts_with('=') { start += 1; }
+                        let end = redacted[start..].find(|c: char| c.is_whitespace() || c == '"' || c == '\'').map(|p| start + p).unwrap_or(redacted.len());
+                        if end > start { redacted.replace_range(start..end, "****"); }
+                    }
+                }
+                let _ = file.write_all(redacted.as_bytes()).await;
                 let _ = file.write_all(b"\n").await;
                 let _ = file.flush().await;
             }
+            let emitted = redacted.clone();
             events(GameEvent::Output(GameOutput {
                 instance_id: instance_id.clone(),
                 stream,
-                line,
+                line: emitted,
             }));
         }
     });
