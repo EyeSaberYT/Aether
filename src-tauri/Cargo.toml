@@ -47,6 +47,10 @@ chrono = { version = "0.4", features = ["serde"] }
 md-5 = "0.10"
 sha1 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate", "time"] }
+# `servers.dat` is gzipped NBT. fastnbt hands back a full value tree, which is
+# what lets us edit the fields we own without dropping the ones we don't.
+fastnbt = "2"
+flate2 = "1"
 dirs = "5"
 log = "0.4"
 walkdir = "2"

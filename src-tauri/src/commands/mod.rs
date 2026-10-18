@@ -6,5 +6,6 @@ pub mod java;
 pub mod launch;
 pub mod modrinth;
 pub mod scan;
+pub mod servers;
 pub mod system;
 pub mod versions;

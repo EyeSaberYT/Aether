@@ -10,6 +10,7 @@ import {
   Package,
   Play,
   Save,
+  Server,
   Settings2,
   ShieldCheck,
   SquarePen,
@@ -25,6 +26,7 @@ import { Spinner } from "@/components/common/Spinner";
 import { InstanceIcon } from "@/components/instances/InstanceIcon";
 import { InstanceUpdates } from "@/components/instances/InstanceUpdates";
 import { ScanDialog } from "@/components/instances/ScanDialog";
+import { ServerListTab } from "@/components/instances/ServerListTab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -61,7 +63,7 @@ import { useInstances } from "@/store/useInstances";
 import { useProgress } from "@/store/useProgress";
 import { cn } from "@/lib/utils";
 
-/** Full instance view: overview, content, settings and logs. */
+/** Full instance view: overview, content, servers, settings and logs. */
 export function InstanceDetail() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -266,6 +268,9 @@ export function InstanceDetail() {
           <TabsTrigger value="content">
             <Package className="mr-2 h-4 w-4" /> Content
           </TabsTrigger>
+          <TabsTrigger value="servers">
+            <Server className="mr-2 h-4 w-4" /> Servers
+          </TabsTrigger>
           <TabsTrigger value="settings">
             <Settings2 className="mr-2 h-4 w-4" /> Settings
           </TabsTrigger>
@@ -279,6 +284,15 @@ export function InstanceDetail() {
         </TabsContent>
         <TabsContent value="content">
           <ContentTab instanceId={instance.id} />
+        </TabsContent>
+        <TabsContent value="servers">
+          <ServerListTab
+            instanceId={instance.id}
+            isRunning={isRunning}
+            launching={launchingId === instance.id}
+            onJoin={(address) => void launch(instance.id, { type: "multiplayer", address })}
+            onReveal={reveal}
+          />
         </TabsContent>
         <TabsContent value="settings">
           <SettingsTab
@@ -759,6 +773,33 @@ function SettingsTab({
   );
 }
 
+/** The quick-play targets, in the order they are offered. */
+const QUICK_PLAY_OPTIONS = [
+  { tag: "none", label: "Title screen" },
+  { tag: "multiplayer", label: "Multiplayer" },
+  { tag: "singleplayer", label: "Singleplayer" },
+  { tag: "singleplayerContinue", label: "Continue" },
+] as const;
+
+/** A blank target of the given kind, ready for the field beside it. */
+function quickPlayFor(tag: QuickPlay["type"]): QuickPlay {
+  switch (tag) {
+    case "multiplayer":
+      return { type: tag, address: "" };
+    case "singleplayer":
+      return { type: tag, world: "" };
+    default:
+      return { type: tag };
+  }
+}
+
+/**
+ * Where the game should open.
+ *
+ * The tags are the backend's own variant names and must stay lowercase
+ * camelCase — serde rejects anything else, which takes the whole settings save
+ * down with it, and the chips would never show as selected either.
+ */
 function QuickPlayEditor({
   value,
   onChange,
@@ -766,49 +807,36 @@ function QuickPlayEditor({
   value: QuickPlay;
   onChange: (value: QuickPlay) => void;
 }) {
-  const type = value.type;
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
-        {(["None", "Multiplayer", "Singleplayer", "SingleplayerContinue"] as const).map((option) => (
+        {QUICK_PLAY_OPTIONS.map((option) => (
           <button
-            key={option}
-            onClick={() =>
-              onChange(
-                option === "Multiplayer"
-                  ? { type: "Multiplayer", address: "" }
-                  : option === "Singleplayer"
-                    ? { type: "Singleplayer", world: "" }
-                    : { type: option },
-              )
-            }
+            key={option.tag}
+            onClick={() => onChange(quickPlayFor(option.tag))}
             className={cn(
               "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-              type === option
+              value.type === option.tag
                 ? "border-primary/50 bg-primary/10 text-primary"
                 : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
           >
-            {option === "SingleplayerContinue"
-              ? "Continue"
-              : option === "None"
-                ? "Title screen"
-                : option}
+            {option.label}
           </button>
         ))}
       </div>
-      {value.type === "Multiplayer" && (
+      {value.type === "multiplayer" && (
         <Input
           value={value.address ?? ""}
           placeholder="play.example.com"
-          onChange={(event) => onChange({ type: "Multiplayer", address: event.target.value })}
+          onChange={(event) => onChange({ type: "multiplayer", address: event.target.value })}
         />
       )}
-      {value.type === "Singleplayer" && (
+      {value.type === "singleplayer" && (
         <Input
           value={value.world ?? ""}
           placeholder="World folder name"
-          onChange={(event) => onChange({ type: "Singleplayer", world: event.target.value })}
+          onChange={(event) => onChange({ type: "singleplayer", world: event.target.value })}
         />
       )}
     </div>

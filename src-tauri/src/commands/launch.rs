@@ -3,19 +3,28 @@
 use tauri::{AppHandle, State};
 
 use crate::commands::auth::active_account;
+use crate::core::instance::QuickPlay;
 use crate::core::launch::{self, LaunchRequest, LaunchedProcess};
 use crate::error::{AetherError, Result};
 use crate::state::AppState;
 
 /// Launch an instance. Emits `download://progress` events throughout.
+///
+/// `quick_play` overrides where the game opens for this launch only. The server
+/// list uses it to join a chosen server without rewriting the instance's saved
+/// settings, which is what a "join once" action should mean.
 #[tauri::command]
 pub async fn launch_instance(
     app: AppHandle,
     state: State<'_, AppState>,
     id: String,
+    quick_play: Option<QuickPlay>,
 ) -> Result<LaunchedProcess> {
     // Make sure the loader profile is installed before we try to resolve it.
-    let instance = state.instances.read().await.get(&id)?.clone();
+    let mut instance = state.instances.read().await.get(&id)?.clone();
+    if let Some(quick_play) = quick_play {
+        instance.settings.quick_play = quick_play;
+    }
 
     {
         let running = state.running.read().await;

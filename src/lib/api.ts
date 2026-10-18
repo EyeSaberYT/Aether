@@ -23,9 +23,12 @@ import {
   type ModrinthTag,
   type ModrinthVersion,
   type PublicAccount,
+  type QuickPlay,
   type ScanReport,
   type SearchFilters,
   type SearchResponse,
+  type ServerEntry,
+  type ServerListFile,
   type Settings,
   type UpdateInfo,
   type VersionOption,
@@ -99,6 +102,18 @@ export const modpacks = {
 };
 
 // ---------------------------------------------------------------------------
+// Server list
+// ---------------------------------------------------------------------------
+
+export const servers = {
+  /** The instance's `servers.dat`, as the game would see it. */
+  list: (id: string) => invoke<ServerListFile>("servers_list", { id }),
+  /** Replace the whole list. Validation happens in the backend. */
+  save: (id: string, servers: ServerEntry[]) =>
+    invoke<ServerListFile>("servers_save", { id, servers }),
+};
+
+// ---------------------------------------------------------------------------
 // Versions & loaders
 // ---------------------------------------------------------------------------
 
@@ -116,7 +131,9 @@ export const versions = {
 // ---------------------------------------------------------------------------
 
 export const launch = {
-  instance: (id: string) => invoke<LaunchedProcess>("launch_instance", { id }),
+  /** Launch an instance, optionally opening straight into a server or world. */
+  instance: (id: string, quickPlay?: QuickPlay) =>
+    invoke<LaunchedProcess>("launch_instance", { id, quickPlay: quickPlay ?? null }),
   preview: (id: string) => invoke<string>("launch_preview", { id }),
   logs: (id: string, lines?: number) =>
     invoke<string | null>("launch_logs", { id, lines: lines ?? null }),

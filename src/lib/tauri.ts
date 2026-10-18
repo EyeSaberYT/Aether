@@ -45,8 +45,14 @@ export interface PublicAccount {
   active: boolean;
 }
 
+/**
+ * Where the game opens when it starts (1.20+ "Quick Play").
+ *
+ * The tags are the backend's camelCase variant names and must match exactly:
+ * serde rejects anything else, taking the whole settings save down with it.
+ */
 export interface QuickPlay {
-  type: "Multiplayer" | "Singleplayer" | "SingleplayerContinue" | "None";
+  type: "none" | "multiplayer" | "singleplayer" | "singleplayerContinue";
   address?: string;
   world?: string;
 }
@@ -115,6 +121,25 @@ export interface ContentEntry {
   versionId: string | null;
   title: string | null;
   iconUrl: string | null;
+}
+
+/** One entry of an instance's in-game multiplayer list (`servers.dat`). */
+export interface ServerEntry {
+  name: string;
+  /** `host` or `host:port`, exactly as the game stores it. */
+  address: string;
+  /** Base64 PNG without a `data:` prefix, as the game caches it. */
+  icon: string | null;
+  hidden: boolean;
+  acceptTextures: boolean;
+}
+
+/** An instance's server list, plus where the file lives. */
+export interface ServerListFile {
+  path: string;
+  /** False when this instance has never had a multiplayer list. */
+  exists: boolean;
+  servers: ServerEntry[];
 }
 
 export interface Progress {

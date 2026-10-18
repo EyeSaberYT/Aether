@@ -115,6 +115,10 @@ pub fn run() {
             commands::modrinth::modrinth_dependencies,
 
             commands::scan::scan_instance,
+
+            // ---- multiplayer server list -----------------------------------
+            commands::servers::servers_list,
+            commands::servers::servers_save,
             // ---- java ------------------------------------------------------
             commands::java::java_list,
             commands::java::java_detect,

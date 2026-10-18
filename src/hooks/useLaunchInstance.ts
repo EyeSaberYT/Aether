@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import { launch as launchApi } from "@/lib/api";
+import type { QuickPlay } from "@/lib/tauri";
 import { useInstances } from "@/store/useInstances";
 import { useProgress } from "@/store/useProgress";
 
@@ -15,11 +16,12 @@ export function useLaunchInstance() {
   const refreshInstances = useInstances((state) => state.refresh);
 
   const launch = useCallback(
-    async (id: string) => {
+    async (id: string, quickPlay?: QuickPlay) => {
       setLaunchingId(id);
       try {
-        const process = await launchApi.instance(id);
-        toast.success("Minecraft is starting…", {
+        const process = await launchApi.instance(id, quickPlay);
+        const joining = quickPlay?.type === "multiplayer" ? quickPlay.address : undefined;
+        toast.success(joining ? `Joining ${joining}…` : "Minecraft is starting…", {
           description: `Process ${process.pid}`,
         });
         await refreshRunning();

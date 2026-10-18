@@ -389,6 +389,48 @@ mod tests {
         instance
     }
 
+    /// The frontend mirrors these tags by hand, so the wire shape is a contract.
+    /// The quick-play editor used to offer "Multiplayer" against a `multiplayer`
+    /// tag, which made every settings save fail to deserialise — pin it down.
+    #[test]
+    fn quick_play_uses_camel_case_tags() {
+        let json = |value: &QuickPlay| serde_json::to_string(value).expect("serialise");
+
+        assert_eq!(json(&QuickPlay::None), r#"{"type":"none"}"#);
+        assert_eq!(
+            json(&QuickPlay::SingleplayerContinue),
+            r#"{"type":"singleplayerContinue"}"#
+        );
+        assert_eq!(
+            json(&QuickPlay::Multiplayer {
+                address: "play.example.com".into()
+            }),
+            r#"{"type":"multiplayer","address":"play.example.com"}"#
+        );
+        assert_eq!(
+            json(&QuickPlay::Singleplayer {
+                world: "New World".into()
+            }),
+            r#"{"type":"singleplayer","world":"New World"}"#
+        );
+
+        // And every one of them must parse back: the failing half, and the one
+        // the launcher hits again on the next settings save.
+        for value in [
+            QuickPlay::None,
+            QuickPlay::SingleplayerContinue,
+            QuickPlay::Multiplayer {
+                address: "play.example.com".into(),
+            },
+            QuickPlay::Singleplayer {
+                world: "New World".into(),
+            },
+        ] {
+            let text = json(&value);
+            serde_json::from_str::<QuickPlay>(&text).expect("round trip");
+        }
+    }
+
     /// The bug this migration exists for: every mod file resolved to one
     /// record named after the pack's free-form `versionId`.
     #[test]

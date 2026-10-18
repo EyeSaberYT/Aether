@@ -13,3 +13,4 @@ pub mod minecraft;
 pub mod modpack;
 pub mod paths;
 pub mod scan;
+pub mod servers;
