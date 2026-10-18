@@ -12,9 +12,9 @@ dark-mode-first interface, first-class mod-loader support and deep Modrinth
 integration, with none of the telemetry, ads or bundled junk found in legacy
 launchers.
 
-> **Status:** early development (`0.1.0`). Instance management, launching and the
-> in-app updater work end to end. Online Microsoft sign-in depends on Mojang
-> allow-listing Aether's built-in client id — see
+> **Status:** early development (`0.1.0`). Instance management, launching, the
+> in-game server list and the in-app updater work end to end. Microsoft sign-in
+> works with the built-in client id, which Mojang has allow-listed — see
 > [Enabling Microsoft sign-in](#enabling-microsoft-sign-in) — and offline profiles
 > always work. The code is production-oriented and fully typed, but expect rough
 > edges.
@@ -228,12 +228,13 @@ prevents accidental misconfiguration. Fork maintainers can override it at build
 time with `AETHER_MS_CLIENT_ID=<id> cargo build` (the value is read via
 `option_env!` and cannot be changed at runtime).
 
-Because a fresh Entra app registration is not allow-listed by Mojang yet,
-Aether also includes a "Sign-in not working? Use browser sign-in" fallback that
-borrows Microsoft's own Minecraft client id, which is already allow-listed. That
-flow finishes on Microsoft's page, so you copy the address bar into Aether; the
-code is exchanged locally with `login.live.com`. Accounts created this way are
-flagged (`Account::legacy_auth`) and refreshed through the same endpoint.
+Aether's own registration is allow-listed by Mojang, so the device-code flow
+above works as-is. A "Sign-in not working? Use browser sign-in" fallback is still
+there, borrowing Microsoft's own Minecraft client id — the one the official
+launcher uses. That flow finishes on Microsoft's page, so you copy the address
+bar into Aether; the code is exchanged locally with `login.live.com`. Accounts
+created this way are flagged (`Account::legacy_auth`) and refreshed through the
+same endpoint.
 
 To use your own Entra registration instead:
 
@@ -245,19 +246,18 @@ To use your own Entra registration instead:
 4. Rebuild from source with your id: `AETHER_MS_CLIENT_ID=<your-client-id> cargo build`
    (set it for the `tauri build`/`npm tauri build` step).
 5. New app registrations must be allow-listed by Mojang before
-   `api.minecraftservices.com` will accept them; until then the final login step
-   returns `Invalid app registration` (HTTP 403). Request access at
-   <https://aka.ms/mce-reviewappid>.
+   `api.minecraftservices.com` will accept them — Aether's own id already is.
+   Until yours is, the final login step returns `Invalid app registration`
+   (HTTP 403). Request access at <https://aka.ms/mce-reviewappid>.
 
 Offline profiles always work, regardless of the above.
 
 #### Browser sign-in fallback
 
-Because a fresh app registration stays blocked until Mojang approves it, the
-sign-in dialog offers a second path under **"Sign-in not working? Use browser
-sign-in"**. It signs in through Microsoft's own Minecraft client id — the one the
-official launcher uses, which is already allow-listed — via the legacy
-`login.live.com` flow.
+The sign-in dialog offers a second path under **"Sign-in not working? Use browser
+sign-in"**, for anyone a device-code sign-in doesn't suit. It signs in through
+Microsoft's own Minecraft client id — the one the official launcher uses, which is
+already allow-listed — via the legacy `login.live.com` flow.
 
 That client id is not an Entra application, so the device-code flow is not
 available for it at all. Instead the browser finishes on a Microsoft-owned page

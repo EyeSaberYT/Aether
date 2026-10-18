@@ -145,8 +145,9 @@ pub async fn auth_login_microsoft(app: AppHandle, state: State<'_, AppState>) ->
 
 /// The URL to open for the legacy browser sign-in.
 ///
-/// Used when our own app registration hasn't been allow-listed by Mojang yet:
-/// this path borrows Microsoft's own Minecraft client id, which already is.
+/// The fallback for when our own app registration can't be used — a fork's id
+/// before Mojang allow-lists it, say. This path borrows Microsoft's own
+/// Minecraft client id, which already is allow-listed.
 #[tauri::command]
 pub fn auth_legacy_url() -> String {
     microsoft::legacy_sign_in_url().to_string()

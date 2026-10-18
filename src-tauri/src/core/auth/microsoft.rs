@@ -51,9 +51,9 @@ const SCOPE: &str = "XboxLive.signin offline_access";
 //
 // A brand new Entra app registration is rejected by
 // `api.minecraftservices.com` ("Invalid app registration") until Mojang
-// allow-lists it at <https://aka.ms/mce-reviewappid>. Until that clears, users
-// can sign in through the flow the official launcher itself has always used:
-// Microsoft's own Minecraft client id.
+// allow-lists it at <https://aka.ms/mce-reviewappid>. Aether's own id is
+// allow-listed, but a fork's starts out unapproved, and there is always the flow
+// the official launcher itself has used: Microsoft's own Minecraft client id.
 //
 // That id is *not* an Entra application, so the modern device-code endpoint
 // rejects it outright (HTTP 400) and there is no device-code variant at all.
@@ -422,10 +422,11 @@ pub async fn xbox_chain(
 
         if body.contains("Invalid app registration") {
             return Err(AetherError::Auth(
-                "Mojang hasn't approved this launcher's app registration yet, so the final \
-                 Minecraft login step is blocked (HTTP 403, \"Invalid app registration\"). \
-                 The client id must be allow-listed at https://aka.ms/mce-reviewappid before \
-                 online sign-in can work."
+                "This build's Azure app registration hasn't been allow-listed by Mojang, so \
+                 the final Minecraft login step is blocked (HTTP 403, \"Invalid app \
+                 registration\"). The client id needs approval at \
+                 https://aka.ms/mce-reviewappid. Until then, sign in with the browser \
+                 sign-in option in the sign-in dialog."
                     .into(),
             ));
         }
