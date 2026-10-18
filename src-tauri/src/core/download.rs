@@ -73,6 +73,8 @@ pub struct DownloadSpec {
     pub size: u64,
     /// Optional human readable label for the UI.
     pub label: Option<String>,
+    /// Extra HTTP headers to send with the request (e.g., `x-api-key`).
+    pub headers: Vec<(String, String)>,
 }
 
 impl DownloadSpec {
@@ -83,6 +85,7 @@ impl DownloadSpec {
             sha1: None,
             size: 0,
             label: None,
+            headers: vec![],
         }
     }
 
@@ -98,6 +101,16 @@ impl DownloadSpec {
 
     pub fn with_label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
+        self
+    }
+
+    pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push((name.into(), value.into()));
+        self
+    }
+
+    pub fn with_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.headers.extend(headers);
         self
     }
 }
@@ -176,7 +189,11 @@ pub async fn download_one(
         })?;
     }
 
-    let response = http.get(&spec.url).send().await?;
+    let mut request = http.get(&spec.url);
+    for (name, value) in &spec.headers {
+        request = request.header(name, value);
+    }
+    let response = request.send().await?;
     if !response.status().is_success() {
         return Err(AetherError::msg(format!(
             "Download failed ({}): {}",
