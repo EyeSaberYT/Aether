@@ -13,11 +13,12 @@ integration, with none of the telemetry, ads or bundled junk found in legacy
 launchers.
 
 > **Status:** early development (`0.1.0`). Instance management, launching, the
-> in-game server list and the in-app updater work end to end. Microsoft sign-in
-> works with the built-in client id, which Mojang has allow-listed — see
-> [Enabling Microsoft sign-in](#enabling-microsoft-sign-in) — and offline profiles
-> always work. The code is production-oriented and fully typed, but expect rough
-> edges.
+> in-game server list, screenshots and world backups, importing from other
+> launchers, the skin viewer/changer and the in-app updater work end to end.
+> Microsoft sign-in works with the built-in client id, which Mojang has
+> allow-listed — see [Enabling Microsoft sign-in](#enabling-microsoft-sign-in) —
+> and offline profiles always work. The code is production-oriented and fully
+> typed, but expect rough edges.
 
 ---
 
@@ -53,6 +54,8 @@ Requires Windows 10+, macOS 10.15+ or a modern Linux desktop.
   secret and no local callback server.
 - **Offline profiles** for single-player and mod testing, clearly marked as such.
 - Multiple accounts with one-click switching.
+- **Skin viewer and changer**: a rotating 3D preview of what your character
+  wears, plus upload for accounts that own the game.
 
 ### Instances
 - Create, rename, duplicate and delete instances.
@@ -63,6 +66,11 @@ Requires Windows 10+, macOS 10.15+ or a modern Linux desktop.
 - Per-instance **memory**, **JVM arguments**, **game arguments**, **Java runtime**,
   **game directory**, **window size**, **fullscreen** and **Quick Play**.
 - Custom icons, groups, tags and notes.
+- **Import instances** from other launchers — Prism, MultiMC, CurseForge, the
+  vanilla launcher and the Modrinth App — keeping worlds, settings and icons;
+  the other launcher's files are left untouched.
+- Per-instance **multiplayer server list** editing, a **screenshot browser**
+  and **world backups** you can create and restore.
 - Import and export **`.mrpack`** modpacks.
 - A crash/launch **log viewer**.
 
@@ -299,8 +307,10 @@ cargo clippy
 - [x] `.mrpack` import/export
 - [x] Offline accounts
 - [x] Microsoft device-code authentication
-- [ ] Skin changer / viewer
-- [ ] Server list management
+- [x] Skin changer / viewer
+- [x] Server list management
+- [x] Screenshots and world backups
+- [x] Import from other launchers (Prism, MultiMC, CurseForge, vanilla, Modrinth App)
 - [ ] CurseForge support
 - [ ] Multiple simultaneous game processes (currently one per instance)
 - [x] Auto-updating launcher (signed, in-app)
