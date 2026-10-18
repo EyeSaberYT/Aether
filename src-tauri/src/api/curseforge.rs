@@ -8,6 +8,10 @@ use crate::api::modrinth::{self, GalleryItem, License, ResolvedFile};
 use crate::error::{AetherError, Result};
 
 pub const CURSEFORGE_API_KEY: &str = "$2a$10$e5XXQKI74zV.SHywaz7l2.9ELP/Bd9lYydtqrTBjNtuFFO8owmDTW";
+
+/// Minecraft's id in CurseForge's game catalogue. `/v1/mods/search` answers
+/// `400 Bad Request` unless it is sent, so every search carries it.
+const MINECRAFT_GAME_ID: i32 = 432;
 const API_BASE: &str = "https://api.curseforge.com";
 
 fn cf_id_to_modrinth(id: i64) -> String {
@@ -208,9 +212,18 @@ impl CurseForgeClient {
         if res.status().is_success() {
             Ok(res.json::<T>().await?)
         } else {
+            let status = res.status();
+            // CurseForge explains refusals in the body ("gameId is required"),
+            // which is far more useful than the status code alone.
+            let detail = res.text().await.unwrap_or_default();
+            let detail = detail.trim();
+            let suffix = if detail.is_empty() {
+                String::new()
+            } else {
+                format!(" — {}", detail.chars().take(200).collect::<String>())
+            };
             Err(AetherError::msg(format!(
-                "CurseForge returned {} for {path}",
-                res.status()
+                "CurseForge returned {status} for {path}{suffix}"
             )))
         }
     }
@@ -221,44 +234,7 @@ impl CurseForgeClient {
         limit: u32,
         offset: u32,
     ) -> Result<modrinth::SearchResponse> {
-        let mut params: Vec<String> = vec![];
-        if !filters.query.is_empty() {
-            params.push(format!(
-                "searchFilter={}",
-                modrinth::urlencode(&filters.query)
-            ));
-        }
-        let class_id = class_id_for_type(&filters.project_type);
-        if let Some(cid) = class_id {
-            params.push(format!("classId={cid}"));
-        }
-        if let Some(game) = &filters.game_version {
-            if !game.is_empty() && game != "any" {
-                params.push(format!("gameVersion={}", modrinth::urlencode(game)));
-            }
-        }
-        let modloader = cf_modloader(&filters.loader);
-        if let Some(m) = modloader {
-            params.push(format!("modLoaderType={m}"));
-        }
-        // CurseForge's sortField is numeric (2 = popularity, 3 = last updated,
-        // 6 = name). Omitting it entirely gives relevance ranking, which is what
-        // we want when the user typed a query.
-        let sort_field = match filters.index.as_deref().unwrap_or("relevance") {
-            "downloads" | "follows" | "popularity" => Some(2),
-            "updated" | "newest" => Some(3),
-            "name" => Some(6),
-            _ => None,
-        };
-        if let Some(sf) = sort_field {
-            params.push(format!("sortField={sf}"));
-        }
-        // sortOrder must be sent explicitly: without it the API silently falls
-        // back to alphabetical ordering regardless of sortField.
-        params.push("sortOrder=desc".to_string());
-        params.push(format!("index={}", offset));
-        params.push(format!("pageSize={}", limit.min(50)));
-        let path = format!("/v1/mods/search?{}", params.join("&"));
+        let path = format!("/v1/mods/search?{}", search_query(filters, limit, offset));
         let resp: CfSearchResponse = self.get(&path).await?;
         let total = resp
             .pagination
@@ -525,6 +501,50 @@ impl CurseForgeClient {
     }
 }
 
+/// Build the `/v1/mods/search` query string.
+///
+/// `gameId` is mandatory — the API answers `400 Bad Request` without it — so
+/// every search is scoped to Minecraft; `classId` then narrows it to mods,
+/// modpacks, resource packs, shaders or datapacks.
+fn search_query(filters: &modrinth::SearchFilters, limit: u32, offset: u32) -> String {
+    let mut params: Vec<String> = vec![format!("gameId={MINECRAFT_GAME_ID}")];
+    if !filters.query.is_empty() {
+        params.push(format!(
+            "searchFilter={}",
+            modrinth::urlencode(&filters.query)
+        ));
+    }
+    if let Some(cid) = class_id_for_type(&filters.project_type) {
+        params.push(format!("classId={cid}"));
+    }
+    if let Some(game) = &filters.game_version {
+        if !game.is_empty() && game != "any" {
+            params.push(format!("gameVersion={}", modrinth::urlencode(game)));
+        }
+    }
+    if let Some(m) = cf_modloader(&filters.loader) {
+        params.push(format!("modLoaderType={m}"));
+    }
+    // CurseForge's sortField is numeric (2 = popularity, 3 = last updated,
+    // 6 = name). Omitting it entirely gives relevance ranking, which is what
+    // we want when the user typed a query.
+    let sort_field = match filters.index.as_deref().unwrap_or("relevance") {
+        "downloads" | "follows" | "popularity" => Some(2),
+        "updated" | "newest" => Some(3),
+        "name" => Some(6),
+        _ => None,
+    };
+    if let Some(sf) = sort_field {
+        params.push(format!("sortField={sf}"));
+    }
+    // sortOrder must be sent explicitly: without it the API silently falls
+    // back to alphabetical ordering regardless of sortField.
+    params.push("sortOrder=desc".to_string());
+    params.push(format!("index={offset}"));
+    params.push(format!("pageSize={}", limit.min(50)));
+    params.join("&")
+}
+
 fn cf_modloader(loader: &Option<String>) -> Option<i32> {
     match loader.as_deref() {
         Some("fabric") => Some(4),
@@ -764,6 +784,52 @@ mod tests {
         assert_eq!(cf_modloader(&Some("neoforge".into())), Some(6));
         assert_eq!(cf_modloader(&None), None);
         assert_eq!(cf_modloader(&Some("vanilla".into())), None);
+    }
+
+    #[test]
+    fn search_query_always_scopes_to_minecraft() {
+        let filters = modrinth::SearchFilters {
+            query: "sodium".into(),
+            project_type: Some("mod".into()),
+            game_version: Some("1.21.1".into()),
+            loader: Some("fabric".into()),
+            index: Some("downloads".into()),
+            ..Default::default()
+        };
+
+        let query = search_query(&filters, 20, 0);
+
+        assert!(
+            query.starts_with("gameId=432&"),
+            "gameId is required by the API: {query}"
+        );
+        assert!(query.contains("searchFilter=sodium"));
+        assert!(query.contains("classId=6"));
+        assert!(query.contains("gameVersion=1.21.1"));
+        assert!(query.contains("modLoaderType=4"));
+        assert!(query.contains("sortField=2"));
+        assert!(query.contains("sortOrder=desc"));
+        assert!(query.contains("index=0"));
+        assert!(query.contains("pageSize=20"));
+    }
+
+    #[test]
+    fn search_query_omits_sort_field_for_relevance() {
+        let filters = modrinth::SearchFilters {
+            project_type: Some("modpack".into()),
+            ..Default::default()
+        };
+
+        // 100 requested: the endpoint caps a page at 50.
+        let query = search_query(&filters, 100, 40);
+
+        assert!(query.starts_with("gameId=432"));
+        assert!(query.contains("classId=4471"));
+        assert!(!query.contains("searchFilter"));
+        assert!(!query.contains("sortField"));
+        assert!(query.contains("sortOrder=desc"));
+        assert!(query.contains("index=40"));
+        assert!(query.contains("pageSize=50"));
     }
 
     #[test]
