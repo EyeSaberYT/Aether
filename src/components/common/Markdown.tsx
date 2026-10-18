@@ -42,9 +42,22 @@ export function Markdown({ children, className }: { children: string; className?
               {linkText}
             </a>
           ),
-          // Keep a wall of screenshots from blowing out the card width.
+          // Two jobs: keep a wall of screenshots from blowing out the card
+          // width, and keep badge rows side by side. Tailwind's preflight
+          // makes every image a block box, which stacks a row of small icons
+          // one per line — Modrinth bodies are full of exactly those rows
+          // (Discord/CurseForge/GitHub badges separated by spacer images).
+          // Inline + middle lets them flow and wrap the way Modrinth's own
+          // site lays them out, and `<center>`-ed images centre properly
+          // again (text-align only moves inline-level boxes). The `!` beats
+          // the typography plugin's image margins, which are meant for
+          // full-width shots and would otherwise pad every icon in a row.
           img: ({ node: _node, ...props }) => (
-            <img {...props} loading="lazy" className="h-auto max-w-full" />
+            <img
+              {...props}
+              loading="lazy"
+              className="!my-0 inline-block align-middle h-auto max-w-full"
+            />
           ),
           // Wide version/compatibility tables scroll instead of overflowing.
           table: ({ children: tableChildren, node: _node, ...props }) => (

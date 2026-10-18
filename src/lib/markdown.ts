@@ -21,6 +21,11 @@ import remarkGfm from "remark-gfm";
 const sanitizeSchema = {
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames ?? []), "center"],
+  // No `attributes` override: the stock schema's global list already permits
+  // everything a body legitimately carries on an image (`alt`, `title`,
+  // `width`, `height`, aria-*), and everything else it drops — `style`,
+  // event handlers, `data-*` — should be dropped. `scripts/verify-markdown.mjs`
+  // pins both halves of that claim.
 };
 
 export const remarkPlugins: Options["remarkPlugins"] = [remarkGfm];

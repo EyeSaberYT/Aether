@@ -67,7 +67,7 @@ async function loadPipeline() {
 const body = `**Sodium** is a performance mod.
 
 <center>
- <img src="https://cdn.modrinth.com/data/AANobbMI/images/5ca2e8f6c72f3d543dd3dc95b706964c5678d80e.png" alt="Sodium 0.4 Comparison"></img>
+ <img src="https://cdn.modrinth.com/data/AANobbMI/images/5ca2e8f6c72f3d543dd3dc95b706964c5678d80e.png" width="150" alt="Sodium 0.4 Comparison"></img>
  <p>
    <!-- This paragraph is load bearing, and ensures a margin is added before the following Markdown -->
  </p>
@@ -101,6 +101,10 @@ const html = renderToStaticMarkup(
 /** [description, assertion] pairs — `false` means the contract is broken. */
 const checks = [
   ["centered image renders", html.includes("5ca2e8f6c72f3d543dd3dc95b706964c5678d80e.png")],
+  // Author-supplied sizing and alt text are part of the stock allowlist; a
+  // narrower schema would quietly lose both (every icon row of every body).
+  ["image alt text survives sanitization", html.includes('alt="Sodium 0.4 Comparison"')],
+  ["image width survives sanitization", html.includes('width="150"')],
   ["center tag is preserved", html.includes("<center>") && html.includes("</center>")],
   ["margin paragraph kept", /<p>\s*<\/p>/.test(html)],
   ["html comment stripped", !html.includes("load bearing")],
