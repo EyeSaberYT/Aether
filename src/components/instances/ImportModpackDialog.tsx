@@ -27,7 +27,7 @@ interface ImportModpackDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/** Import a local `.mrpack`: choose the file, preview it, then create an instance. */
+/** Import a local `.mrpack` or CurseForge pack `.zip`: choose, preview, create. */
 export function ImportModpackDialog({ open, onOpenChange }: ImportModpackDialogProps) {
   const navigate = useNavigate();
   const refreshInstances = useInstances((state) => state.refresh);
@@ -45,7 +45,10 @@ export function ImportModpackDialog({ open, onOpenChange }: ImportModpackDialogP
   }
 
   async function choose() {
-    const chosen = await pickFile({ title: "Choose a Modrinth modpack", extensions: ["mrpack"] });
+    const chosen = await pickFile({
+      title: "Choose a modpack file",
+      extensions: ["mrpack", "zip"],
+    });
     if (!chosen) return;
     setLoading(true);
     try {
@@ -89,8 +92,8 @@ export function ImportModpackDialog({ open, onOpenChange }: ImportModpackDialogP
         <DialogHeader>
           <DialogTitle>Import a modpack</DialogTitle>
           <DialogDescription>
-            Open a <code className="text-xs">.mrpack</code> file from Modrinth or another
-            launcher.
+            Open a <code className="text-xs">.mrpack</code> from Modrinth or a CurseForge
+            modpack <code className="text-xs">.zip</code>.
           </DialogDescription>
         </DialogHeader>
 
@@ -102,7 +105,7 @@ export function ImportModpackDialog({ open, onOpenChange }: ImportModpackDialogP
           >
             {loading ? <Spinner className="h-6 w-6" /> : <FolderOpen className="h-7 w-7 text-muted-foreground" />}
             <span className="text-sm font-medium">
-              {loading ? "Reading pack…" : "Choose a .mrpack file"}
+              {loading ? "Reading pack…" : "Choose a modpack file"}
             </span>
           </button>
         ) : (
@@ -121,7 +124,11 @@ export function ImportModpackDialog({ open, onOpenChange }: ImportModpackDialogP
               </Badge>
               <Badge variant="outline">{loaderLabel(preview.loader)}</Badge>
               <Badge variant="muted">{preview.fileCount} files</Badge>
-              <Badge variant="muted">{formatBytes(preview.totalSize)}</Badge>
+              {/* CurseForge manifests don't carry sizes, so there's nothing
+                  honest to show. */}
+              {preview.totalSize > 0 && (
+                <Badge variant="muted">{formatBytes(preview.totalSize)}</Badge>
+              )}
             </div>
 
             {preview.summary && (

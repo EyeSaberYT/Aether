@@ -82,7 +82,7 @@ export function Library() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setImportOpen(true)}>
                   <PackagePlus className="mr-2 h-4 w-4" />
-                  Modpack file (.mrpack)
+                  Modpack file (.mrpack / .zip)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

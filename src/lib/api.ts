@@ -200,8 +200,17 @@ export interface ResolvedFile {
 }
 
 export const modrinth = {
-  search: (filters: SearchFilters, limit = 20, offset = 0) =>
-    invoke<SearchResponse>("modrinth_search", { filters, limit, offset }),
+  /**
+   * Search a catalog. `source` defaults to Modrinth; pass `"curseforge"` to
+   * search CurseForge instead (results come back in the same shape).
+   */
+  search: (filters: SearchFilters, limit = 20, offset = 0, source?: "modrinth" | "curseforge") =>
+    invoke<SearchResponse>("modrinth_search", {
+      filters,
+      source: source && source !== "modrinth" ? source : null,
+      limit,
+      offset,
+    }),
   project: (id: string) => invoke<ModrinthProject>("modrinth_project", { id }),
   projects: (ids: string[]) => invoke<ModrinthProject[]>("modrinth_projects", { ids }),
   versions: (projectId: string, gameVersion?: string, loader?: string) =>

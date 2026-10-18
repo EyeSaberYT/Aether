@@ -33,8 +33,8 @@ interface InstallDialogProps {
 }
 
 /**
- * Installs a Modrinth project. Modpacks create a new instance; everything else
- * is dropped into a chosen instance (with required dependencies).
+ * Installs a project from the current catalog. Modpacks create a new instance;
+ * everything else goes into a chosen instance (with required dependencies).
  */
 export function InstallDialog({ open, onOpenChange, project }: InstallDialogProps) {
   const isModpack = project.projectType === "modpack";
@@ -79,13 +79,17 @@ export function InstallDialog({ open, onOpenChange, project }: InstallDialogProp
     const loader = unfiltered ? undefined : selected?.loader;
     modrinth
       .versions(project.id, gameVersion, loader)
-      .then((list) => !cancelled && setVersions(list))
+      .then((list) => {
+        if (cancelled) return;
+        setVersions(list);
+        if (list.length > 0 && !versionId) setVersionId(list[0].id);
+      })
       .catch(() => !cancelled && setVersions([]))
       .finally(() => !cancelled && setLoadingVersions(false));
     return () => {
       cancelled = true;
     };
-  }, [open, project.id, isModpack, isLoaderAgnostic, selected?.gameVersion, selected?.loader]);
+  }, [open, project.id, isModpack, isLoaderAgnostic, selected?.gameVersion, selected?.loader, versionId]);
 
   async function handleInstall() {
     setBusy(true);

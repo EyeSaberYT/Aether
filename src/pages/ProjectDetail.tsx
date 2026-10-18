@@ -23,7 +23,7 @@ import { compactNumber, projectTypeColor, projectTypeLabel, relativeTime } from 
 import type { ModrinthProject, ModrinthVersion } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
-/** Modrinth project page with description, gallery and version list. */
+/** Modrinth or CurseForge project page with description, gallery and versions. */
 export function ProjectDetail() {
   const { id } = useParams<{ projectType: string; id: string }>();
   const navigate = useNavigate();
@@ -106,6 +106,7 @@ export function ProjectDetail() {
             <Badge variant="outline" className={cn(projectTypeColor(project.projectType))}>
               {projectTypeLabel(project.projectType)}
             </Badge>
+            {id?.startsWith("cf:") && <Badge variant="muted">CurseForge</Badge>}
           </div>
           <p className="mt-2 text-sm text-muted-foreground">{project.description}</p>
 

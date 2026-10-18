@@ -39,6 +39,25 @@ const SORTS = [
   { value: "updated", label: "Recently updated" },
 ];
 
+/**
+ * CurseForge's sort enum has no honest "newest created" or "followers" sort,
+ * so that catalog offers only the sorts with a real counterpart. Falls back to
+ * relevance if the current sort isn't one of them.
+ */
+const CURSEFORGE_SORTS = SORTS.filter((option) =>
+  ["relevance", "downloads", "updated"].includes(option.value),
+);
+
+type Source = "modrinth" | "curseforge";
+
+const SOURCES: { value: Source; label: string }[] = [
+  { value: "modrinth", label: "Modrinth" },
+  { value: "curseforge", label: "CurseForge" },
+];
+
+/** Which catalog the search box is pointed at. */
+const SOURCE_KEY = "aether.discover.source";
+
 const PAGE_SIZE = 20;
 
 /**
@@ -83,6 +102,17 @@ export function Discover() {
   const [storedView, setStoredView] = usePersistentState<ViewMode>(VIEW_KEY, DEFAULT_VIEW);
   // Storage is user-writable, so narrow it before it reaches a branch.
   const view = asViewMode(storedView);
+
+  const [storedSource, setStoredSource] = usePersistentState<Source>(SOURCE_KEY, "modrinth");
+  const source: Source = storedSource === "curseforge" ? "curseforge" : "modrinth";
+  const sorts = source === "curseforge" ? CURSEFORGE_SORTS : SORTS;
+
+  /** Switch catalog, dropping a sort that doesn't exist on the new one. */
+  function pickSource(next: Source) {
+    setStoredSource(next);
+    const allowed = next === "curseforge" ? CURSEFORGE_SORTS : SORTS;
+    if (!allowed.some((option) => option.value === sort)) setSort("relevance");
+  }
 
   // Whether the loader filter is meaningful for the current project type.
   const loaderApplies =
@@ -129,6 +159,7 @@ export function Discover() {
           filters,
           PAGE_SIZE,
           (target - 1) * PAGE_SIZE,
+          source,
         );
         // A newer request superseded this one while it was in flight.
         if (id !== requestId.current) return;
@@ -143,14 +174,14 @@ export function Discover() {
         if (id === requestId.current) setLoading(false);
       }
     },
-    [filters],
+    [filters, source],
   );
 
-  // Re-run whenever the filters change (always from the first page).
+  // Re-run whenever the filters or the catalog change (always from page one).
   useEffect(() => {
     void runSearch(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [filters, source]);
 
   // Jump to a page and return to the top of the results, the way every
   // paginated site behaves — without this, clicking "Next" on a long page
@@ -168,12 +199,12 @@ export function Discover() {
     <div className="mx-auto w-full max-w-6xl px-8 py-8">
       <PageHeader
         title="Discover"
-        description="Browse mods, modpacks, resource packs, shaders and datapacks from Modrinth."
+        description="Browse mods, modpacks, resource packs, shaders and datapacks from Modrinth and CurseForge."
         actions={<ViewToggle view={view} onChange={setStoredView} label="Discover layout" />}
       />
 
-      {/* Type tabs */}
-      <div className="mt-6 flex flex-wrap gap-1.5">
+      {/* Type tabs + catalog switch */}
+      <div className="mt-6 flex flex-wrap items-center gap-1.5">
         {PROJECT_TYPES.map((type) => (
           <button
             key={type}
@@ -188,6 +219,23 @@ export function Discover() {
             {projectTypeLabel(type)}s
           </button>
         ))}
+
+        <div className="ml-auto flex rounded-full border p-0.5">
+          {SOURCES.map((option) => (
+            <button
+              key={option.value}
+              onClick={() => pickSource(option.value)}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                source === option.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Search + filters */}
@@ -240,7 +288,7 @@ export function Discover() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SORTS.map((option) => (
+              {sorts.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
                 </SelectItem>
