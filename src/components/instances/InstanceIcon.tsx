@@ -25,10 +25,13 @@ export function InstanceIcon({
   );
 
   const isHttp = icon && /^https?:\/\//i.test(icon);
+  const isData = icon && /^data:/i.test(icon);
+  const isBlob = icon && /^blob:/i.test(icon);
+  const isRemoteImage = isHttp || isData || isBlob;
   const isPath =
     !errored &&
     icon &&
-    !isHttp &&
+    !isRemoteImage &&
     (/^(?:[a-zA-Z]:[\\/]|\/)/.test(icon) || icon.startsWith("file:"));
   const localPath = isPath ? (icon?.startsWith("file:") ? icon.slice(5) : icon) : null;
 
@@ -41,6 +44,21 @@ export function InstanceIcon({
           className="h-full w-full object-cover"
           loading="lazy"
           onError={() => setErrored(true)}
+        />
+      </div>
+    );
+  }
+
+  if (isRemoteImage && !errored) {
+    return (
+      <div className={cn(base, "bg-muted")}>
+        <img
+          src={icon ?? undefined}
+          alt={name}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={() => setErrored(true)}
+          referrerPolicy="no-referrer"
         />
       </div>
     );
