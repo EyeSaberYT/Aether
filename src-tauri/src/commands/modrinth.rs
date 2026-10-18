@@ -1,19 +1,35 @@
-//! Modrinth browsing, installation and update commands.
+//! Modrinth and CurseForge browsing, installation and update commands.
+//!
+//! Everything routes by source: an explicit `source` argument picks the
+//! catalog for searches, and `cf:`-prefixed ids always mean CurseForge —
+//! which is how stored projects, pinned versions and dependency entries
+//! come back to us later without anyone remembering where they came from.
 
 use std::path::PathBuf;
 
 use tauri::{AppHandle, State};
 
+use crate::api::curseforge::CurseForgeClient;
 use crate::api::modrinth::{ModrinthClient, Project, ResolvedFile, SearchFilters, SearchResponse, Tag, Version};
 use crate::core::download::{download_many, DownloadSpec, Progress, ProgressSink};
 use crate::core::instance::{content_dir, game_dir, Instance, InstalledProject, LoaderKind};
-use crate::core::modpack;
+use crate::core::{cfpack, modpack};
 use crate::core::{java, minecraft::loader};
 use crate::error::{AetherError, Result};
 use crate::state::AppState;
 
 async fn client(state: &AppState) -> ModrinthClient {
     ModrinthClient::new(state.http.clone(), state.modrinth_base().await)
+}
+
+fn cf_client(state: &AppState) -> CurseForgeClient {
+    CurseForgeClient::new(state.http.clone())
+}
+
+/// Should this call go to CurseForge? `cf:` ids always do, whatever the
+/// caller claimed; otherwise the explicit source wins.
+fn use_curseforge(source: Option<&str>, id: &str) -> bool {
+    id.starts_with("cf:") || source == Some("curseforge")
 }
 
 // ---------------------------------------------------------------------------
@@ -24,9 +40,15 @@ async fn client(state: &AppState) -> ModrinthClient {
 pub async fn modrinth_search(
     state: State<'_, AppState>,
     filters: SearchFilters,
+    source: Option<String>,
     limit: Option<u32>,
     offset: Option<u32>,
 ) -> Result<SearchResponse> {
+    if source.as_deref() == Some("curseforge") {
+        return cf_client(&state)
+            .search(&filters, limit.unwrap_or(20), offset.unwrap_or(0))
+            .await;
+    }
     client(&state)
         .await
         .search(&filters, limit.unwrap_or(20), offset.unwrap_or(0))
@@ -35,6 +57,9 @@ pub async fn modrinth_search(
 
 #[tauri::command]
 pub async fn modrinth_project(state: State<'_, AppState>, id: String) -> Result<Project> {
+    if use_curseforge(None, &id) {
+        return cf_client(&state).project(&id).await;
+    }
     client(&state).await.project(&id).await
 }
 
@@ -43,7 +68,26 @@ pub async fn modrinth_projects(
     state: State<'_, AppState>,
     ids: Vec<String>,
 ) -> Result<Vec<Project>> {
-    client(&state).await.projects(&ids).await
+    // Mixed lists can happen (a Modrinth pack tracking a CF dependency is
+    // unlikely but legal), so split and merge rather than pick one source.
+    let (cf_ids, mr_ids): (Vec<String>, Vec<String>) =
+        ids.into_iter().partition(|id| id.starts_with("cf:"));
+
+    let mut projects = if mr_ids.is_empty() {
+        vec![]
+    } else {
+        client(&state).await.projects(&mr_ids).await?
+    };
+    if !cf_ids.is_empty() {
+        let cf = cf_client(&state);
+        for id in &cf_ids {
+            // One broken id shouldn't blank the whole content list.
+            if let Ok(project) = cf.project(id).await {
+                projects.push(project);
+            }
+        }
+    }
+    Ok(projects)
 }
 
 #[tauri::command]
@@ -55,6 +99,11 @@ pub async fn modrinth_versions(
 ) -> Result<Vec<Version>> {
     let game_versions = game_version.filter(|v| !v.is_empty()).into_iter().collect::<Vec<_>>();
     let loaders = loader.filter(|v| !v.is_empty()).into_iter().collect::<Vec<_>>();
+    if use_curseforge(None, &project_id) {
+        return cf_client(&state)
+            .versions(&project_id, &game_versions, &loaders)
+            .await;
+    }
     client(&state)
         .await
         .versions(&project_id, &game_versions, &loaders)
@@ -118,6 +167,41 @@ async fn resolve_version(
         .ok_or_else(|| AetherError::msg("No compatible version of that project was found."))
 }
 
+/// [`resolve_version`] for CurseForge projects (same fallback ladder, different
+/// client — the two API clients share no trait).
+async fn resolve_version_cf(
+    client: &CurseForgeClient,
+    project_id: &str,
+    project_type: &str,
+    instance: &Instance,
+    version_id: Option<String>,
+) -> Result<Version> {
+    if let Some(id) = version_id {
+        return client.version(&id).await;
+    }
+
+    let game_versions = vec![instance.game_version.clone()];
+    let loaders = loader_query(instance, project_type)
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let mut versions = client
+        .versions(project_id, &game_versions, &loaders)
+        .await?;
+
+    if versions.is_empty() && !loaders.is_empty() {
+        versions = client.versions(project_id, &game_versions, &[]).await?;
+    }
+    if versions.is_empty() {
+        versions = client.versions(project_id, &[], &[]).await?;
+    }
+
+    versions
+        .into_iter()
+        .next()
+        .ok_or_else(|| AetherError::msg("No compatible version of that project was found."))
+}
+
 /// Download a set of resolved files into their correct content folders and
 /// record them against the instance.
 async fn install_resolved(
@@ -150,6 +234,10 @@ async fn install_resolved(
             .with_label(file.title.clone());
         if let Some(sha1) = &file.sha1 {
             spec = spec.with_sha1(sha1.clone());
+        }
+        // CurseForge-hosted files need the API key on the CDN request.
+        for (name, value) in crate::api::curseforge::download_headers(&file.url) {
+            spec = spec.with_header(name, value);
         }
         specs.push(spec);
 
@@ -224,6 +312,50 @@ pub async fn modrinth_install(
     project_id: String,
     version_id: Option<String>,
 ) -> Result<Vec<InstalledProject>> {
+    let instance = state.instances.read().await.get(&instance_id)?.clone();
+
+    // CurseForge projects (detected by their `cf:` id) take the CF path.
+    if project_id.starts_with("cf:") {
+        let client = cf_client(&state);
+        let project = client.project(&project_id).await?;
+
+        if project.project_type == "modpack" {
+            return Err(AetherError::msg(
+                "Modpacks create their own instance — use the pack installer instead.",
+            ));
+        }
+
+        let version = resolve_version_cf(
+            &client,
+            &project_id,
+            &project.project_type,
+            &instance,
+            version_id,
+        )
+        .await?;
+
+        let mut resolved = vec![client.primary_file(&version).await?];
+
+        let loader_name = instance.loader.modrinth_name().to_string();
+        let dependencies = client
+            .resolve_dependencies(&version, &loader_name, &instance.game_version, 4)
+            .await
+            .unwrap_or_default();
+
+        let already_installed: Vec<String> = instance
+            .installed_projects
+            .iter()
+            .map(|p| p.project_id.clone())
+            .collect();
+        for dependency in dependencies {
+            if dependency.project_id != project_id && !already_installed.contains(&dependency.project_id) {
+                resolved.push(dependency);
+            }
+        }
+
+        return install_resolved(&state, &app, &instance_id, resolved, true).await;
+    }
+
     let client = client(&state).await;
     let project = client.project(&project_id).await?;
 
@@ -233,7 +365,6 @@ pub async fn modrinth_install(
         ));
     }
 
-    let instance = state.instances.read().await.get(&instance_id)?.clone();
     let version = resolve_version(
         &client,
         &project_id,
@@ -266,7 +397,7 @@ pub async fn modrinth_install(
     install_resolved(&state, &app, &instance_id, resolved, true).await
 }
 
-/// Install a Modrinth modpack as a brand new instance.
+/// Install a Modrinth or CurseForge modpack as a brand new instance.
 #[tauri::command]
 pub async fn modrinth_install_modpack(
     app: AppHandle,
@@ -275,6 +406,53 @@ pub async fn modrinth_install_modpack(
     version_id: Option<String>,
     name: Option<String>,
 ) -> Result<Instance> {
+    // CurseForge packs are plain zips with a manifest.json; the download and
+    // install flow mirrors the .mrpack path below.
+    if project_id.starts_with("cf:") {
+        let client = cf_client(&state);
+        let project = client.project(&project_id).await?;
+
+        // Modpack versions aren't filtered by an existing instance's
+        // loader/version, so take the pinned version or the newest one.
+        let version = match version_id {
+            Some(id) => client.version(&id).await?,
+            None => client
+                .versions(&project_id, &[], &[])
+                .await?
+                .into_iter()
+                .next()
+                .ok_or_else(|| AetherError::msg("That modpack has no published versions."))?,
+        };
+        let file = client.primary_file(&version).await?;
+
+        let mut base = file.filename.replace('/', "_");
+        if base.to_ascii_lowercase().ends_with(".zip") {
+            base.truncate(base.len() - ".zip".len());
+        }
+        let pack_path = state.paths.cache_dir().join(format!("{base}.zip"));
+
+        let mut spec = DownloadSpec::new(file.url.clone(), &pack_path)
+            .with_size(file.size)
+            .with_label("modpack");
+        if let Some(sha1) = file.sha1.clone().filter(|s| !s.is_empty()) {
+            spec = spec.with_sha1(sha1);
+        }
+        for (header, value) in crate::api::curseforge::download_headers(&file.url) {
+            spec = spec.with_header(header, value);
+        }
+
+        download_many(
+            state.http.clone(),
+            vec![spec],
+            1,
+            "modpack",
+            state.sink(&app),
+        )
+        .await?;
+
+        return install_cf_pack(app, state, pack_path, Some((&project, &version)), name).await;
+    }
+
     let client = client(&state).await;
     let project = client.project(&project_id).await?;
 
@@ -388,6 +566,91 @@ pub async fn modrinth_install_modpack(
     Ok(instance)
 }
 
+/// Shared tail of every CurseForge pack install: read the manifest, create the
+/// instance, install the loader, apply the pack, and persist.
+///
+/// `meta` carries the CurseForge project + version when the pack came from the
+/// store; local `.zip` imports pass `None` and are tracked by name only.
+pub(crate) async fn install_cf_pack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    pack_path: PathBuf,
+    meta: Option<(&Project, &Version)>,
+    name: Option<String>,
+) -> Result<Instance> {
+    let manifest = cfpack::read_manifest(&pack_path)?;
+    let (loader, loader_version) = manifest.loader_info();
+    let game_version = manifest.minecraft.version.clone();
+
+    let display_name = name
+        .or_else(|| meta.map(|(p, _)| p.title.clone()))
+        .unwrap_or_else(|| manifest.name.clone());
+    let mut instance = Instance::new(display_name, &game_version, loader);
+    instance.icon = meta.and_then(|(p, _)| p.icon_url.clone());
+    instance.loader_version = loader_version.clone();
+    instance.notes = meta.map(|(p, _)| p.description.clone());
+
+    let dir = game_dir(&state.paths, &instance);
+    std::fs::create_dir_all(&dir)?;
+
+    // Install the loader first so the pack lands in a working instance.
+    if let Some(version) = loader_version.as_deref() {
+        if loader != LoaderKind::Vanilla {
+            let java_path = match loader {
+                LoaderKind::Forge | LoaderKind::NeoForge => java::detect(&state.paths, None, 17)
+                    .await
+                    .map(|r| r.as_path())
+                    .unwrap_or_else(|| PathBuf::from("java")),
+                _ => PathBuf::from("java"),
+            };
+            loader::install_loader(
+                &state.http,
+                &state.paths,
+                &dir,
+                loader,
+                &game_version,
+                version,
+                &java_path,
+                state.sink(&app),
+            )
+            .await?;
+        }
+    }
+
+    let concurrency = state.settings.read().await.concurrent_downloads;
+    let mut projects = cfpack::install(
+        &state.http,
+        &manifest,
+        &pack_path,
+        &dir,
+        concurrency,
+        state.sink(&app),
+    )
+    .await?;
+
+    // cfpack::install ends with a placeholder pack record; replace it with the
+    // API-backed one when we know the pack's real ids, so update checks work.
+    if let Some((project, version)) = meta {
+        if let Some(record) = projects
+            .iter_mut()
+            .find(|p| p.project_type == "modpack" && p.project_id.is_empty())
+        {
+            record.project_id = project.id.clone();
+            record.version_id = version.id.clone();
+            record.title = project.title.clone();
+            record.icon_url = project.icon_url.clone();
+        }
+    }
+    instance.installed_projects = projects;
+
+    {
+        let mut store = state.instances.write().await;
+        store.instances.push(instance.clone());
+        store.persist(&state.paths, &instance.id)?;
+    }
+    Ok(instance)
+}
+
 // ---------------------------------------------------------------------------
 // Updates
 // ---------------------------------------------------------------------------
@@ -420,6 +683,7 @@ pub async fn modrinth_check_updates(
 async fn check_updates(state: &AppState, instance_id: &str) -> Result<Vec<UpdateInfo>> {
     let instance = state.instances.read().await.get(instance_id)?.clone();
     let client = client(state).await;
+    let cf = cf_client(state);
 
     let mut updates = vec![];
     for installed in &instance.installed_projects {
@@ -428,16 +692,28 @@ async fn check_updates(state: &AppState, instance_id: &str) -> Result<Vec<Update
         if installed.project_id.is_empty() {
             continue;
         }
+        let is_cf = installed.project_id.starts_with("cf:");
 
         if installed.project_type == "modpack" {
             // Re-check the pack project itself for a newer version.
-            let Ok(project) = client.project(&installed.project_id).await else {
-                continue;
+            let (project, versions) = if is_cf {
+                let Ok(project) = cf.project(&installed.project_id).await else {
+                    continue;
+                };
+                let Ok(versions) = cf.versions(&installed.project_id, &[], &[]).await else {
+                    continue;
+                };
+                (project, versions)
+            } else {
+                let Ok(project) = client.project(&installed.project_id).await else {
+                    continue;
+                };
+                let Ok(versions) = client.versions(&installed.project_id, &[], &[]).await else {
+                    continue;
+                };
+                (project, versions)
             };
-            let Ok(mut versions) = client.versions(&installed.project_id, &[], &[]).await else {
-                continue;
-            };
-            if let Some(latest) = versions.drain(..).next() {
+            if let Some(latest) = versions.into_iter().next() {
                 if latest.id != installed.version_id {
                     updates.push(UpdateInfo {
                         project_id: installed.project_id.clone(),
@@ -459,11 +735,22 @@ async fn check_updates(state: &AppState, instance_id: &str) -> Result<Vec<Update
             .into_iter()
             .collect::<Vec<_>>();
 
-        let Ok(mut versions) = client
-            .versions(&installed.project_id, &game_versions, &loaders)
-            .await
-        else {
-            continue;
+        let mut versions = if is_cf {
+            match cf
+                .versions(&installed.project_id, &game_versions, &loaders)
+                .await
+            {
+                Ok(versions) => versions,
+                Err(_) => continue,
+            }
+        } else {
+            match client
+                .versions(&installed.project_id, &game_versions, &loaders)
+                .await
+            {
+                Ok(versions) => versions,
+                Err(_) => continue,
+            }
         };
 
         let Some(latest) = versions.drain(..).next() else {
@@ -473,11 +760,18 @@ async fn check_updates(state: &AppState, instance_id: &str) -> Result<Vec<Update
             continue;
         }
 
-        let title = client
-            .project(&installed.project_id)
-            .await
-            .map(|p| p.title)
-            .unwrap_or_else(|_| installed.title.clone());
+        let title = if is_cf {
+            cf.project(&installed.project_id)
+                .await
+                .map(|p| p.title)
+                .unwrap_or_else(|_| installed.title.clone())
+        } else {
+            client
+                .project(&installed.project_id)
+                .await
+                .map(|p| p.title)
+                .unwrap_or_else(|_| installed.title.clone())
+        };
 
         updates.push(UpdateInfo {
             project_id: installed.project_id.clone(),
@@ -503,15 +797,19 @@ pub async fn modrinth_apply_update(
     project_id: String,
     version_id: String,
 ) -> Result<()> {
-    let client = client(&state).await;
-    let version = client.version(&version_id).await?;
-    let file = client.primary_file(&version).await?;
-
     let _ = &project_id;
+    let file = if version_id.starts_with("cf:") {
+        let cf = cf_client(&state);
+        let version = cf.version(&version_id).await?;
+        cf.primary_file(&version).await?
+    } else {
+        let client = client(&state).await;
+        let version = client.version(&version_id).await?;
+        client.primary_file(&version).await?
+    };
     install_resolved(&state, &app, &instance_id, vec![file], true).await?;
     Ok(())
 }
-
 /// Update every outdated project in an instance.
 #[tauri::command]
 pub async fn modrinth_update_all(
@@ -522,9 +820,15 @@ pub async fn modrinth_update_all(
     let updates = check_updates(&state, &instance_id).await?;
     let count = updates.len();
     for update in updates {
-        let client = client(&state).await;
-        let version = client.version(&update.latest_version_id).await?;
-        let file = client.primary_file(&version).await?;
+        let file = if update.latest_version_id.starts_with("cf:") {
+            let cf = cf_client(&state);
+            let version = cf.version(&update.latest_version_id).await?;
+            cf.primary_file(&version).await?
+        } else {
+            let client = client(&state).await;
+            let version = client.version(&update.latest_version_id).await?;
+            client.primary_file(&version).await?
+        };
         install_resolved(&state, &app, &instance_id, vec![file], true).await?;
     }
     Ok(count)
@@ -579,8 +883,23 @@ pub async fn modrinth_dependencies(
     instance_id: String,
     version_id: String,
 ) -> Result<Vec<ResolvedFile>> {
-    let client = client(&state).await;
     let instance = state.instances.read().await.get(&instance_id)?.clone();
+
+    if version_id.starts_with("cf:") {
+        let cf = cf_client(&state);
+        let version = cf.version(&version_id).await?;
+        return Ok(cf
+            .resolve_dependencies(
+                &version,
+                instance.loader.modrinth_name(),
+                &instance.game_version,
+                4,
+            )
+            .await
+            .unwrap_or_default());
+    }
+
+    let client = client(&state).await;
     let version = client.version(&version_id).await?;
 
     Ok(client

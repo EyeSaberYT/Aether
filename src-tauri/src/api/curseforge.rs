@@ -14,7 +14,9 @@ fn cf_id_to_modrinth(id: i64) -> String {
     format!("cf:{id}")
 }
 
-fn modrinth_id_to_cf(id: &str) -> Option<i64> {
+/// Extract the numeric CurseForge project id from a namespaced id
+/// (`cf:123` → `123`); `None` for anything else.
+pub fn modrinth_id_to_cf(id: &str) -> Option<i64> {
     if let Some(rest) = id.strip_prefix("cf:") {
         rest.parse::<i64>().ok()
     } else {
@@ -164,6 +166,12 @@ struct CfDependency {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CfFileResponse {
+    data: CfFile,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CfFilesResponse {
     data: Vec<CfFile>,
 }
@@ -185,7 +193,11 @@ impl CurseForgeClient {
     }
 
     async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let url = if path.starts_with("http") { path.to_string() } else { format!("{API_BASE}{path}") };
+        let url = if path.starts_with("http") {
+            path.to_string()
+        } else {
+            format!("{API_BASE}{path}")
+        };
         let res = self
             .http
             .get(&url)
@@ -196,14 +208,25 @@ impl CurseForgeClient {
         if res.status().is_success() {
             Ok(res.json::<T>().await?)
         } else {
-            Err(AetherError::msg(format!("CurseForge returned {} for {path}", res.status())))
+            Err(AetherError::msg(format!(
+                "CurseForge returned {} for {path}",
+                res.status()
+            )))
         }
     }
 
-    pub async fn search(&self, filters: &modrinth::SearchFilters, limit: u32, offset: u32) -> Result<modrinth::SearchResponse> {
+    pub async fn search(
+        &self,
+        filters: &modrinth::SearchFilters,
+        limit: u32,
+        offset: u32,
+    ) -> Result<modrinth::SearchResponse> {
         let mut params: Vec<String> = vec![];
         if !filters.query.is_empty() {
-            params.push(format!("searchFilter={}", modrinth::urlencode(&filters.query)));
+            params.push(format!(
+                "searchFilter={}",
+                modrinth::urlencode(&filters.query)
+            ));
         }
         let class_id = class_id_for_type(&filters.project_type);
         if let Some(cid) = class_id {
@@ -218,21 +241,36 @@ impl CurseForgeClient {
         if let Some(m) = modloader {
             params.push(format!("modLoaderType={m}"));
         }
+        // CurseForge's sortField is numeric (2 = popularity, 3 = last updated,
+        // 6 = name). Omitting it entirely gives relevance ranking, which is what
+        // we want when the user typed a query.
         let sort_field = match filters.index.as_deref().unwrap_or("relevance") {
-            "downloads" => "totalDownloads",
-            "follows" => "popularity",
-            "updated" | "newest" => "lastUpdated",
-            _ => "relevance",
+            "downloads" | "follows" | "popularity" => Some(2),
+            "updated" | "newest" => Some(3),
+            "name" => Some(6),
+            _ => None,
         };
-        params.push(format!("sortField={sort_field}"));
+        if let Some(sf) = sort_field {
+            params.push(format!("sortField={sf}"));
+        }
+        // sortOrder must be sent explicitly: without it the API silently falls
+        // back to alphabetical ordering regardless of sortField.
         params.push("sortOrder=desc".to_string());
         params.push(format!("index={}", offset));
         params.push(format!("pageSize={}", limit.min(50)));
         let path = format!("/v1/mods/search?{}", params.join("&"));
         let resp: CfSearchResponse = self.get(&path).await?;
-        let total = resp.pagination.as_ref().map(|p| p.total_count).unwrap_or_else(|| resp.data.len() as u32);
+        let total = resp
+            .pagination
+            .as_ref()
+            .map(|p| p.total_count)
+            .unwrap_or_else(|| resp.data.len() as u32);
         let offset_out = resp.pagination.as_ref().map(|p| p.index).unwrap_or(offset);
-        let limit_out = resp.pagination.as_ref().map(|p| p.page_size).unwrap_or(limit);
+        let limit_out = resp
+            .pagination
+            .as_ref()
+            .map(|p| p.page_size)
+            .unwrap_or(limit);
         Ok(modrinth::SearchResponse {
             hits: resp.data.into_iter().map(cf_mod_to_hit).collect(),
             offset: offset_out,
@@ -255,13 +293,21 @@ impl CurseForgeClient {
         Ok(resp.data)
     }
 
-    pub async fn versions(&self, project_id: &str, game_versions: &[String], loaders: &[String]) -> Result<Vec<modrinth::Version>> {
+    pub async fn versions(
+        &self,
+        project_id: &str,
+        game_versions: &[String],
+        loaders: &[String],
+    ) -> Result<Vec<modrinth::Version>> {
         let Some(cid) = modrinth_id_to_cf(project_id) else {
             return Err(AetherError::msg("invalid curseforge id"));
         };
         let mut params: Vec<String> = vec![];
         if !game_versions.is_empty() && !game_versions[0].is_empty() {
-            params.push(format!("gameVersion={}", modrinth::urlencode(&game_versions[0])));
+            params.push(format!(
+                "gameVersion={}",
+                modrinth::urlencode(&game_versions[0])
+            ));
         }
         if !loaders.is_empty() && !loaders[0].is_empty() {
             let m = cf_modloader_name(&loaders[0]);
@@ -273,38 +319,209 @@ impl CurseForgeClient {
         params.push("pageSize=50".to_string());
         let path = format!("/v1/mods/{cid}/files?{}", params.join("&"));
         let resp: CfFilesResponse = self.get(&path).await?;
-        Ok(resp.data.into_iter().filter(|f| f.is_available).map(|f| cf_file_to_version(&f, project_id)).collect())
+        Ok(resp
+            .data
+            .into_iter()
+            .filter(|f| f.is_available)
+            .map(|f| cf_file_to_version(&f, project_id))
+            .collect())
     }
 
     pub async fn version(&self, version_id: &str) -> Result<modrinth::Version> {
         let Some((mod_id, file_id)) = modrinth_version_to_cf(version_id) else {
             return Err(AetherError::msg("invalid version id"));
         };
-        let resp: CfFilesResponse = self.get(&format!("/v1/mods/{mod_id}/files?fileIds={file_id}")).await?;
-        let file = resp.data.into_iter().next().ok_or_else(|| AetherError::msg("version not found"))?;
+        let file = self.file(mod_id, file_id).await?;
         Ok(cf_file_to_version(&file, &cf_id_to_modrinth(mod_id)))
     }
 
-    pub async fn primary_file(&self, version: &modrinth::Version) -> Result<ResolvedFile> {
-        let Some((mod_id, file_id)) = modrinth_version_to_cf(&version.id) else {
-            return Err(AetherError::msg("invalid version id"));
-        };
-        let project = self.project(&version.project_id).await?;
-        let file_resp: CfFilesResponse = self.get(&format!("/v1/mods/{mod_id}/files?fileIds={file_id}")).await?;
-        let file = file_resp.data.into_iter().next().ok_or_else(|| AetherError::msg("file not found"))?;
-        Ok(cf_file_to_resolved(&file, &project, false))
+    /// `GET /v1/mods/{modId}/files/{fileId}` — one file in the normalised
+    /// [`modrinth::Version`] shape.
+    async fn file(&self, mod_id: i64, file_id: i64) -> Result<CfFile> {
+        let resp: CfFileResponse = self
+            .get(&format!("/v1/mods/{mod_id}/files/{file_id}"))
+            .await?;
+        Ok(resp.data)
     }
 
-    pub async fn tags(&self, kind: &str) -> Result<Vec<modrinth::Tag>> {
-        match kind {
-            "loader" => Ok(vec![
-                modrinth::Tag { name: "fabric".to_string(), version_type: None, project_type: None, icon: None, header: None },
-                modrinth::Tag { name: "forge".to_string(), version_type: None, project_type: None, icon: None, header: None },
-                modrinth::Tag { name: "quilt".to_string(), version_type: None, project_type: None, icon: None, header: None },
-                modrinth::Tag { name: "neoforge".to_string(), version_type: None, project_type: None, icon: None, header: None },
-            ]),
-            _ => Ok(vec![]),
+    /// `POST /v1/mods/files` — resolve many files at once (used by the CurseForge
+    /// modpack manifest installer, which ships hundreds of project/file id pairs).
+    pub async fn files_batch(&self, file_ids: &[i64]) -> Result<Vec<modrinth::Version>> {
+        if file_ids.is_empty() {
+            return Ok(vec![]);
         }
+        let url = format!("{API_BASE}/v1/mods/files");
+        let res = self
+            .http
+            .post(&url)
+            .header("x-api-key", CURSEFORGE_API_KEY)
+            .header("User-Agent", crate::USER_AGENT)
+            .json(&serde_json::json!({ "fileIds": file_ids }))
+            .send()
+            .await?;
+        if !res.status().is_success() {
+            return Err(AetherError::msg(format!(
+                "CurseForge returned {} for /v1/mods/files",
+                res.status()
+            )));
+        }
+        let resp: CfFilesResponse = res.json().await?;
+        Ok(resp
+            .data
+            .into_iter()
+            .map(|f| cf_file_to_version(&f, &cf_id_to_modrinth(f.mod_id)))
+            .collect())
+    }
+
+    /// `POST /v1/mods` — fetch many projects at once (modpack installs use this
+    /// to resolve titles and icons without one request per mod).
+    pub async fn mods_batch(&self, mod_ids: &[i64]) -> Result<Vec<modrinth::Project>> {
+        if mod_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let url = format!("{API_BASE}/v1/mods");
+        let res = self
+            .http
+            .post(&url)
+            .header("x-api-key", CURSEFORGE_API_KEY)
+            .header("User-Agent", crate::USER_AGENT)
+            .json(&serde_json::json!({ "modIds": mod_ids }))
+            .send()
+            .await?;
+        if !res.status().is_success() {
+            return Err(AetherError::msg(format!(
+                "CurseForge returned {} for /v1/mods",
+                res.status()
+            )));
+        }
+        let resp: CfSearchResponse = res.json().await?;
+        Ok(resp
+            .data
+            .into_iter()
+            .map(|m| cf_mod_to_project(&m, String::new()))
+            .collect())
+    }
+
+    /// `GET /v1/mods/{modId}/files/{fileId}/download-url` — fallback for files
+    /// whose inline `downloadUrl` is null.
+    pub async fn download_url(&self, mod_id: i64, file_id: i64) -> Result<String> {
+        let resp: CfDownloadUrlResponse = self
+            .get(&format!("/v1/mods/{mod_id}/files/{file_id}/download-url"))
+            .await?;
+        Ok(resp.data)
+    }
+
+    pub async fn primary_file(&self, version: &modrinth::Version) -> Result<ResolvedFile> {
+        let project = self.project(&version.project_id).await.ok();
+        let file = version
+            .files
+            .iter()
+            .find(|f| f.primary)
+            .or_else(|| version.files.first())
+            .ok_or_else(|| AetherError::msg("This version has no downloadable file."))?;
+
+        // Files published without an inline URL need the download-url endpoint.
+        let mut url = file.url.clone();
+        if url.is_empty() {
+            let Some((mod_id, file_id)) = modrinth_version_to_cf(&version.id) else {
+                return Err(AetherError::msg("invalid version id"));
+            };
+            url = self.download_url(mod_id, file_id).await?;
+        }
+
+        Ok(ResolvedFile {
+            project_id: version.project_id.clone(),
+            version_id: version.id.clone(),
+            title: project
+                .as_ref()
+                .map(|p| p.title.clone())
+                .unwrap_or_else(|| version.name.clone()),
+            project_type: project
+                .as_ref()
+                .map(|p| p.project_type.clone())
+                .unwrap_or_else(|| "mod".into()),
+            url,
+            filename: file.filename.clone(),
+            sha1: file.hashes.get("sha1").cloned(),
+            size: file.size,
+            icon_url: project.and_then(|p| p.icon_url),
+            dependency: false,
+        })
+    }
+
+    /// Walk a version's required dependencies and produce the full set of
+    /// files to install — the CurseForge counterpart of
+    /// [`ModrinthClient::resolve_dependencies`](super::modrinth::ModrinthClient::resolve_dependencies).
+    ///
+    /// CurseForge dependency entries never pin a specific file, so each
+    /// dependency resolves to the newest file matching the instance's game
+    /// version and loader.
+    pub async fn resolve_dependencies(
+        &self,
+        version: &modrinth::Version,
+        loader: &str,
+        game_version: &str,
+        depth: usize,
+    ) -> Result<Vec<ResolvedFile>> {
+        let mut resolved: Vec<ResolvedFile> = vec![];
+        let mut seen_projects: Vec<String> = vec![version.project_id.clone()];
+
+        // Breadth-first over required dependencies, capped to avoid cycles.
+        let mut queue: Vec<String> = version
+            .dependencies
+            .iter()
+            .filter(|d| d.dependency_type == "required")
+            .filter_map(|d| d.project_id.clone())
+            .filter(|id| !id.is_empty())
+            .collect();
+
+        let mut level = 0;
+        while !queue.is_empty() && level < depth.max(1) {
+            let mut next: Vec<String> = vec![];
+
+            for project_id in queue {
+                let Ok(project) = self.project(&project_id).await else {
+                    continue;
+                };
+                if seen_projects.contains(&project.id) {
+                    continue;
+                }
+                seen_projects.push(project.id.clone());
+
+                let Some(candidate) = self
+                    .versions(
+                        &project.id,
+                        &[game_version.to_string()],
+                        &[loader.to_string()],
+                    )
+                    .await
+                    .ok()
+                    .and_then(|versions| versions.into_iter().next())
+                else {
+                    continue;
+                };
+
+                for dep in &candidate.dependencies {
+                    if dep.dependency_type == "required" {
+                        if let Some(id) = &dep.project_id {
+                            next.push(id.clone());
+                        }
+                    }
+                }
+
+                if let Ok(file) = self.primary_file(&candidate).await {
+                    resolved.push(ResolvedFile {
+                        dependency: true,
+                        ..file
+                    });
+                }
+            }
+
+            queue = next;
+            level += 1;
+        }
+
+        Ok(resolved)
     }
 }
 
@@ -326,14 +543,25 @@ fn cf_mod_to_hit(m: CfMod) -> modrinth::SearchHit {
     let mut gallery: Vec<String> = vec![];
     if let Some(screens) = &m.screenshots {
         for s in screens {
-            if let Some(th) = &s.thumbnail_url { gallery.push(th.clone()); } else { gallery.push(s.url.clone()); }
+            if let Some(th) = &s.thumbnail_url {
+                gallery.push(th.clone());
+            } else {
+                gallery.push(s.url.clone());
+            }
         }
     }
     modrinth::SearchHit {
         project_id: cf_id_to_modrinth(m.id),
-        project_type: class_to_project_type(m.categories.first().and_then(|c| c.class_id).unwrap_or(6)),
+        project_type: class_to_project_type(
+            m.categories.first().and_then(|c| c.class_id).unwrap_or(6),
+        ),
         slug: m.slug.clone(),
-        author: m.authors.as_ref().and_then(|a| a.first()).map(|a| a.name.clone()).unwrap_or_default(),
+        author: m
+            .authors
+            .as_ref()
+            .and_then(|a| a.first())
+            .map(|a| a.name.clone())
+            .unwrap_or_default(),
         title: m.name.clone(),
         description: m.summary.clone().unwrap_or_default(),
         categories: m.categories.iter().map(|c| c.slug.clone()).collect(),
@@ -359,7 +587,9 @@ fn cf_mod_to_project(m: &CfMod, body: String) -> modrinth::Project {
         title: m.name.clone(),
         description: m.summary.clone().unwrap_or_default(),
         body,
-        project_type: class_to_project_type(m.categories.first().and_then(|c| c.class_id).unwrap_or(6)),
+        project_type: class_to_project_type(
+            m.categories.first().and_then(|c| c.class_id).unwrap_or(6),
+        ),
         categories: m.categories.iter().map(|c| c.slug.clone()).collect(),
         additional_categories: vec![],
         game_versions: m.game_versions.clone().unwrap_or_default(),
@@ -367,13 +597,23 @@ fn cf_mod_to_project(m: &CfMod, body: String) -> modrinth::Project {
         downloads: m.download_count as u64,
         followers: 0,
         icon_url: m.logo.as_ref().map(|l| l.url.clone()),
-        gallery: m.screenshots.as_ref().unwrap_or(&vec![]).iter().map(|s| GalleryItem {
-            url: s.url.clone(),
-            featured: false,
-            title: s.title.clone(),
-            description: s.description.clone(),
-        }).collect(),
-        license: m.license.as_ref().map(|l| License { id: l.id.clone().unwrap_or_default(), name: l.name.clone(), url: l.url.clone() }),
+        gallery: m
+            .screenshots
+            .as_ref()
+            .unwrap_or(&vec![])
+            .iter()
+            .map(|s| GalleryItem {
+                url: s.url.clone(),
+                featured: false,
+                title: s.title.clone(),
+                description: s.description.clone(),
+            })
+            .collect(),
+        license: m.license.as_ref().map(|l| License {
+            id: l.id.clone().unwrap_or_default(),
+            name: l.name.clone(),
+            url: l.url.clone(),
+        }),
         source_url: m.links.as_ref().and_then(|ln| ln.source_url.clone()),
         issues_url: m.links.as_ref().and_then(|ln| ln.issues_url.clone()),
         wiki_url: m.links.as_ref().and_then(|ln| ln.wiki_url.clone()),
@@ -412,25 +652,46 @@ fn cf_file_to_version(f: &CfFile, project_id: &str) -> modrinth::Version {
     let mut loaders: Vec<String> = vec![];
     for v in &f.game_versions {
         let low = v.to_ascii_lowercase();
-        if low == "fabric" { loaders.push("fabric".to_string()); }
-        if low == "forge" { loaders.push("forge".to_string()); }
-        if low == "quilt" { loaders.push("quilt".to_string()); }
-        if low == "neoforge" { loaders.push("neoforge".to_string()); }
+        if low == "fabric" {
+            loaders.push("fabric".to_string());
+        }
+        if low == "forge" {
+            loaders.push("forge".to_string());
+        }
+        if low == "quilt" {
+            loaders.push("quilt".to_string());
+        }
+        if low == "neoforge" {
+            loaders.push("neoforge".to_string());
+        }
     }
     let mut game_versions: Vec<String> = vec![];
     for v in &f.game_versions {
         let low = v.to_ascii_lowercase();
-        if low == "fabric" || low == "forge" || low == "quilt" || low == "neoforge" || low == "client" || low == "server" { continue; }
+        if low == "fabric"
+            || low == "forge"
+            || low == "quilt"
+            || low == "neoforge"
+            || low == "client"
+            || low == "server"
+        {
+            continue;
+        }
         game_versions.push(v.clone());
     }
     let mut hashes = HashMap::new();
     for h in &f.hashes {
-        if h.algo == 1 { hashes.insert("sha1".to_string(), h.value.clone()); }
+        if h.algo == 1 {
+            hashes.insert("sha1".to_string(), h.value.clone());
+        }
     }
     modrinth::Version {
         id: version_to_modrinth(project_id, f.id),
         project_id: project_id.to_string(),
-        name: f.display_name.clone().unwrap_or_else(|| f.file_name.clone()),
+        name: f
+            .display_name
+            .clone()
+            .unwrap_or_else(|| f.file_name.clone()),
         version_number: f.file_name.clone(),
         version_type: match f.release_type {
             1 => "release".to_string(),
@@ -448,34 +709,33 @@ fn cf_file_to_version(f: &CfFile, project_id: &str) -> modrinth::Version {
             size: f.file_length as u64,
             file_type: None,
         }],
-        dependencies: f.dependencies.iter().filter(|d| d.relation_type == 3).map(|d| modrinth::Dependency {
-            version_id: None,
-            project_id: Some(cf_id_to_modrinth(d.mod_id)),
-            file_name: None,
-            dependency_type: "required".to_string(),
-        }).collect(),
+        dependencies: f
+            .dependencies
+            .iter()
+            .filter(|d| d.relation_type == 3)
+            .map(|d| modrinth::Dependency {
+                version_id: None,
+                project_id: Some(cf_id_to_modrinth(d.mod_id)),
+                file_name: None,
+                dependency_type: "required".to_string(),
+            })
+            .collect(),
         downloads: 0,
         date_published: f.file_date.clone(),
         changelog: f.changelog.clone(),
     }
 }
 
-fn cf_file_to_resolved(f: &CfFile, project: &modrinth::Project, dependency: bool) -> ResolvedFile {
-    let mut sha1 = None;
-    for h in &f.hashes {
-        if h.algo == 1 { sha1 = Some(h.value.clone()); break; }
-    }
-    ResolvedFile {
-        project_id: cf_id_to_modrinth(f.mod_id),
-        version_id: version_to_modrinth(&project.id, f.id),
-        title: project.title.clone(),
-        project_type: project.project_type.clone(),
-        url: f.download_url.clone().unwrap_or_default(),
-        filename: f.file_name.clone(),
-        sha1,
-        size: f.file_length as u64,
-        icon_url: project.icon_url.clone(),
-        dependency,
+/// Extra HTTP headers required to fetch a CurseForge-hosted file.
+///
+/// The file CDN has started requiring the API key (announced July 2026);
+/// sending it everywhere on those hosts is harmless where enforcement isn't
+/// live yet and future-proof where it is.
+pub fn download_headers(url: &str) -> Vec<(String, String)> {
+    if url.contains("forgecdn.net") {
+        vec![("x-api-key".to_string(), CURSEFORGE_API_KEY.to_string())]
+    } else {
+        vec![]
     }
 }
 
@@ -494,5 +754,25 @@ mod tests {
     fn version_roundtrip() {
         assert_eq!(version_to_modrinth("cf:123", 456), "cf:123:456");
         assert_eq!(modrinth_version_to_cf("cf:123:456"), Some((123, 456)));
+    }
+
+    #[test]
+    fn loader_names_map_to_cf_enum() {
+        assert_eq!(cf_modloader(&Some("fabric".into())), Some(4));
+        assert_eq!(cf_modloader(&Some("forge".into())), Some(1));
+        assert_eq!(cf_modloader(&Some("quilt".into())), Some(5));
+        assert_eq!(cf_modloader(&Some("neoforge".into())), Some(6));
+        assert_eq!(cf_modloader(&None), None);
+        assert_eq!(cf_modloader(&Some("vanilla".into())), None);
+    }
+
+    #[test]
+    fn cdn_downloads_carry_the_api_key() {
+        let url = "https://edge.forgecdn.net/files/8893/488/geckolib.jar";
+        let headers = download_headers(url);
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers[0].0, "x-api-key");
+
+        assert!(download_headers("https://cdn.modrinth.com/data/x.jar").is_empty());
     }
 }

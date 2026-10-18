@@ -581,15 +581,25 @@ pub fn instance_slug(name: String) -> String {
 // Modpacks
 // ---------------------------------------------------------------------------
 
+/// Read either pack format from disk: `.mrpack` first, then CurseForge
+/// `manifest.json` zips.
+fn read_pack_preview(pack: &std::path::Path) -> Result<modpack::ModpackPreview> {
+    match modpack::read_index(pack) {
+        Ok(index) => Ok(index.preview()),
+        Err(_) => Ok(crate::core::cfpack::read_manifest(pack)?.preview()),
+    }
+}
+
 #[tauri::command]
 pub async fn modpack_preview(
     _state: State<'_, AppState>,
     path: String,
 ) -> Result<modpack::ModpackPreview> {
-    Ok(modpack::read_index(&PathBuf::from(path))?.preview())
+    read_pack_preview(&PathBuf::from(path))
 }
 
-/// Create a new instance from a local `.mrpack` and install it.
+/// Create a new instance from a local `.mrpack` or CurseForge pack `.zip`
+/// and install it.
 #[tauri::command]
 pub async fn modpack_import(
     app: AppHandle,
@@ -598,7 +608,14 @@ pub async fn modpack_import(
     name: Option<String>,
 ) -> Result<Instance> {
     let pack = PathBuf::from(&path);
-    let index = modpack::read_index(&pack)?;
+
+    // Not an .mrpack? Try a CurseForge pack zip before giving up.
+    let index = match modpack::read_index(&pack) {
+        Ok(index) => index,
+        Err(_) => {
+            return crate::commands::modrinth::install_cf_pack(app, state, pack, None, name).await;
+        }
+    };
     let (loader, loader_version) = index.loader_info();
     let game_version = index.game_version();
 

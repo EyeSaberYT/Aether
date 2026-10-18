@@ -5,6 +5,7 @@
 
 pub mod auth;
 pub mod backups;
+pub mod cfpack;
 pub mod config;
 pub mod download;
 pub mod import;
