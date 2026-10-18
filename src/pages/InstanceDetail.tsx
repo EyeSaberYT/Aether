@@ -3,10 +3,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Boxes,
+  Camera,
   Copy,
   Eraser,
   FileText,
   FolderOpen,
+  Globe,
   Package,
   Play,
   Save,
@@ -26,7 +28,9 @@ import { Spinner } from "@/components/common/Spinner";
 import { InstanceIcon } from "@/components/instances/InstanceIcon";
 import { InstanceUpdates } from "@/components/instances/InstanceUpdates";
 import { ScanDialog } from "@/components/instances/ScanDialog";
+import { ScreenshotsTab } from "@/components/instances/ScreenshotsTab";
 import { ServerListTab } from "@/components/instances/ServerListTab";
+import { WorldsTab } from "@/components/instances/WorldsTab";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -261,7 +265,9 @@ export function InstanceDetail() {
       <InstanceUpdates instanceId={instance.id} />
 
       <Tabs value={tab} onValueChange={setTab} className="mt-8">
-        <TabsList>
+        {/* Seven tabs no longer fit when the window is at its minimum width, so
+            the list scrolls sideways instead of stretching the layout. */}
+        <TabsList className="max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabsTrigger value="overview">
             <Boxes className="mr-2 h-4 w-4" /> Overview
           </TabsTrigger>
@@ -270,6 +276,12 @@ export function InstanceDetail() {
           </TabsTrigger>
           <TabsTrigger value="servers">
             <Server className="mr-2 h-4 w-4" /> Servers
+          </TabsTrigger>
+          <TabsTrigger value="worlds">
+            <Globe className="mr-2 h-4 w-4" /> Worlds
+          </TabsTrigger>
+          <TabsTrigger value="screenshots">
+            <Camera className="mr-2 h-4 w-4" /> Screenshots
           </TabsTrigger>
           <TabsTrigger value="settings">
             <Settings2 className="mr-2 h-4 w-4" /> Settings
@@ -293,6 +305,12 @@ export function InstanceDetail() {
             onJoin={(address) => void launch(instance.id, { type: "multiplayer", address })}
             onReveal={reveal}
           />
+        </TabsContent>
+        <TabsContent value="worlds">
+          <WorldsTab instanceId={instance.id} isRunning={isRunning} />
+        </TabsContent>
+        <TabsContent value="screenshots">
+          <ScreenshotsTab instanceId={instance.id} />
         </TabsContent>
         <TabsContent value="settings">
           <SettingsTab

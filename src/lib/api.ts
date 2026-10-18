@@ -24,7 +24,9 @@ import {
   type ModrinthVersion,
   type PublicAccount,
   type QuickPlay,
+  type RestoredWorld,
   type ScanReport,
+  type ScreenshotsFile,
   type SearchFilters,
   type SearchResponse,
   type ServerEntry,
@@ -32,6 +34,7 @@ import {
   type Settings,
   type UpdateInfo,
   type VersionOption,
+  type WorldsOverview,
 } from "@/lib/tauri";
 
 // ---------------------------------------------------------------------------
@@ -111,6 +114,29 @@ export const servers = {
   /** Replace the whole list. Validation happens in the backend. */
   save: (id: string, servers: ServerEntry[]) =>
     invoke<ServerListFile>("servers_save", { id, servers }),
+};
+
+// ---------------------------------------------------------------------------
+// Worlds, backups and screenshots
+// ---------------------------------------------------------------------------
+
+export const worlds = {
+  /** Every world in the instance, and every backup taken of them. */
+  overview: (id: string) => invoke<WorldsOverview>("worlds_overview", { id }),
+  /** Zip a world into the instance's backup folder. */
+  backup: (id: string, world: string) =>
+    invoke<WorldsOverview>("world_backup_create", { id, world }),
+  /** Replace a world with one of its backups. */
+  restore: (id: string, file: string) =>
+    invoke<RestoredWorld>("world_backup_restore", { id, file }),
+  deleteBackup: (id: string, file: string) =>
+    invoke<WorldsOverview>("world_backup_delete", { id, file }),
+};
+
+export const screenshots = {
+  /** The instance's screenshots, newest first. */
+  list: (id: string) => invoke<ScreenshotsFile>("screenshots_list", { id }),
+  remove: (id: string, name: string) => invoke<ScreenshotsFile>("screenshot_delete", { id, name }),
 };
 
 // ---------------------------------------------------------------------------

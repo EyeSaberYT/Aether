@@ -4,6 +4,7 @@
 //! reused (e.g. from a future CLI) without dragging in the GUI.
 
 pub mod auth;
+pub mod backups;
 pub mod config;
 pub mod download;
 pub mod instance;
@@ -13,4 +14,5 @@ pub mod minecraft;
 pub mod modpack;
 pub mod paths;
 pub mod scan;
+pub mod screenshots;
 pub mod servers;

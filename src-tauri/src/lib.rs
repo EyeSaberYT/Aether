@@ -51,6 +51,12 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("Aether");
             }
+            // Screenshots and world icons are drawn with `asset:` URLs, and the
+            // data root is only known at runtime (`AETHER_DATA_DIR` can put it
+            // anywhere), so the scope is granted here instead of being written
+            // into the bundle config.
+            let root = app.state::<state::AppState>().paths.root.clone();
+            app.asset_protocol_scope().allow_directory(&root, true)?;
             log::info!(
                 "Aether {} starting on {} ({})",
                 env!("CARGO_PKG_VERSION"),
@@ -119,6 +125,13 @@ pub fn run() {
             // ---- multiplayer server list -----------------------------------
             commands::servers::servers_list,
             commands::servers::servers_save,
+            // ---- worlds and screenshots ------------------------------------
+            commands::backups::worlds_overview,
+            commands::backups::world_backup_create,
+            commands::backups::world_backup_restore,
+            commands::backups::world_backup_delete,
+            commands::screenshots::screenshots_list,
+            commands::screenshots::screenshot_delete,
             // ---- java ------------------------------------------------------
             commands::java::java_list,
             commands::java::java_detect,

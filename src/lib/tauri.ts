@@ -142,6 +142,61 @@ export interface ServerListFile {
   servers: ServerEntry[];
 }
 
+/** One world folder in an instance's `saves/`. */
+export interface World {
+  name: string;
+  path: string;
+  /** Bytes on disk, everything the world owns. */
+  size: number;
+  /** When it was last played, or null when the platform will not say. */
+  modified: string | null;
+  /** The game's `icon.png` for it, when it has drawn one. */
+  icon: string | null;
+}
+
+/** One zip in an instance's backup folder. */
+export interface WorldBackup {
+  /** File name; restoring and deleting refer to a backup by this. */
+  name: string;
+  path: string;
+  /** The world it was taken from, read back out of the file name. */
+  world: string;
+  size: number;
+  created: string | null;
+}
+
+/** What a restore did, so the UI can say where the replaced world went. */
+export interface RestoredWorld {
+  world: string;
+  /** Safety backup of the world that was replaced, when there was one. */
+  safety: string | null;
+}
+
+/** Everything the Worlds tab needs, in one round trip. */
+export interface WorldsOverview {
+  savesPath: string;
+  backupsPath: string;
+  worlds: World[];
+  backups: WorldBackup[];
+}
+
+/** One screenshot in an instance's `screenshots/`. */
+export interface Screenshot {
+  name: string;
+  path: string;
+  size: number;
+  /** When the shot was taken, i.e. when the file was written. */
+  taken: string | null;
+}
+
+/** An instance's screenshots, plus where the folder lives. */
+export interface ScreenshotsFile {
+  path: string;
+  /** False when this instance has never taken a screenshot. */
+  exists: boolean;
+  screenshots: Screenshot[];
+}
+
 export interface Progress {
   stage: string;
   label: string;
