@@ -12,9 +12,10 @@ dark-mode-first interface, first-class mod-loader support and deep Modrinth
 integration, with none of the telemetry, ads or bundled junk found in legacy
 launchers.
 
-> **Status:** early development (`0.1.0`). Instance management, launching, the
-> in-game server list, screenshots and world backups, importing from other
-> launchers, the skin viewer/changer and the in-app updater work end to end.
+> **Status:** early development (`0.1.0`). Instance management, launching,
+> Modrinth and CurseForge browsing, the in-game server list, screenshots and
+> world backups, importing from other launchers, the skin viewer/changer and
+> the in-app updater work end to end.
 > Microsoft sign-in works with the built-in client id, which Mojang has
 > allow-listed — see [Enabling Microsoft sign-in](#enabling-microsoft-sign-in) —
 > and offline profiles always work. The code is production-oriented and fully
@@ -74,13 +75,15 @@ Requires Windows 10+, macOS 10.15+ or a modern Linux desktop.
 - Import and export **`.mrpack`** modpacks.
 - A crash/launch **log viewer**.
 
-### Modrinth integration
-- Search mods, modpacks, resource packs, shaders and datapacks.
+### Mod browsing — Modrinth & CurseForge
+- Search mods, modpacks, resource packs, shaders and datapacks on Modrinth
+  or CurseForge; switch catalogs from the Discover page.
 - Filter by game version, loader and sort order; browse project pages with
   gallery, description, metadata and version history.
 - One-click install with **automatic dependency resolution**.
 - **Update checks** for installed projects, with one-click apply.
-- Install modpacks straight into a new, correctly-configured instance.
+- Install modpacks (`.mrpack` and CurseForge `.zip`) straight into a new,
+  correctly-configured instance.
 
 ### Content management
 - Inspect every installed mod/pack per instance.
@@ -137,7 +140,9 @@ src-tauri/src/
     java.rs               Runtime detection + Mojang runtime install
     launch.rs             End-to-end launch pipeline
     modpack.rs            .mrpack import/export
+    cfpack.rs             CurseForge pack manifest + install
   api/modrinth.rs         Typed Labrinth (Modrinth API v2) client
+  api/curseforge.rs       Typed CurseForge API client
   commands/               Thin Tauri command surface (the IPC boundary)
   state.rs                Shared `AppState`
   error.rs                One `AetherError` type, serialized as a string
@@ -311,7 +316,7 @@ cargo clippy
 - [x] Server list management
 - [x] Screenshots and world backups
 - [x] Import from other launchers (Prism, MultiMC, CurseForge, vanilla, Modrinth App)
-- [ ] CurseForge support
+- [x] CurseForge search, install, dependency resolution and modpacks
 - [ ] Multiple simultaneous game processes (currently one per instance)
 - [x] Auto-updating launcher (signed, in-app)
 
