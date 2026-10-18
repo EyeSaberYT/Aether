@@ -36,6 +36,15 @@ pub enum AetherError {
     #[error("Archive error: {0}")]
     Zip(#[from] zip::result::ZipError),
 
+    #[error("Invalid data: {0}")]
+    InvalidData(String),
+
+    #[error("Rate limit exceeded: {0}")]
+    RateLimited(String),
+
+    #[error("Minecraft API error: {0}")]
+    Minecraft(String),
+
     /// Reading another launcher's SQLite database (the Modrinth App).
     #[error("We couldn't read another launcher's data: {0}")]
     Database(#[from] rusqlite::Error),

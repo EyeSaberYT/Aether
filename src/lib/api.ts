@@ -39,6 +39,8 @@ import {
   type ImportOutcome,
   type ImportRequest,
   type ImportScan,
+  type SkinCurrentResponse,
+  type SkinView,
 } from "@/lib/tauri";
 
 // ---------------------------------------------------------------------------
@@ -263,6 +265,12 @@ export const system = {
   freeSpace: () => invoke<number | null>("system_free_space"),
 };
 
+export const skin = {
+  current: () => invoke<SkinCurrentResponse>("skin_current"),
+  upload: (path: string, variant: "classic" | "slim" = "classic") =>
+    invoke<SkinCurrentResponse>("skin_upload", { path, variant }),
+};
+
 /** Re-export the raw event helper so stores can subscribe to backend events. */
 export { subscribe } from "@/lib/tauri";
-export type { DeviceCodeInfo };
+export type { DeviceCodeInfo, SkinCurrentResponse, SkinView };

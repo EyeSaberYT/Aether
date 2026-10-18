@@ -45,6 +45,17 @@ export interface PublicAccount {
   active: boolean;
 }
 
+export interface SkinView {
+  skinUrl?: string | null;
+  variant?: "classic" | "slim" | null;
+  capeUrl?: string | null;
+}
+
+export interface SkinCurrentResponse {
+  account: PublicAccount | null;
+  skin: SkinView;
+}
+
 /**
  * Where the game opens when it starts (1.20+ "Quick Play").
  *

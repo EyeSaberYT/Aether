@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, LogOut, Plus, UserRound } from "lucide-react";
+import { ChevronDown, LogOut, Plus, Shirt, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { SignInDialog } from "@/components/accounts/SignInDialog";
+import { SkinDialog } from "@/components/accounts/SkinDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,7 @@ import { activeAccount, useAccounts } from "@/store/useAccounts";
 /** Sidebar footer showing the active player and account switching. */
 export function AccountMenu() {
   const [signInOpen, setSignInOpen] = useState(false);
+  const [skinOpen, setSkinOpen] = useState(false);
   const accounts = useAccounts((state) => state.accounts);
   const setActive = useAccounts((state) => state.setActive);
   const logout = useAccounts((state) => state.logout);
@@ -75,6 +77,9 @@ export function AccountMenu() {
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setSkinOpen(true)}>
+            <Shirt /> Skin
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setSignInOpen(true)}>
             <Plus /> Add account
           </DropdownMenuItem>
@@ -90,6 +95,7 @@ export function AccountMenu() {
         </DropdownMenuContent>
       </DropdownMenu>
       <SignInDialog open={signInOpen} onOpenChange={setSignInOpen} />
+      <SkinDialog open={skinOpen} onOpenChange={setSkinOpen} />
     </>
   );
 }

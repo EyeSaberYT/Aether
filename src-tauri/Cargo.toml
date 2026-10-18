@@ -35,17 +35,20 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 
 # `rustls-tls` keeps the binary self-contained (no OpenSSL dependency on Linux).
+# `multipart` is needed to upload a skin to the Minecraft services API.
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "stream",
     "rustls-tls",
     "gzip",
+    "multipart",
 ] }
 
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 md-5 = "0.10"
 sha1 = "0.10"
+sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate", "time"] }
 # `servers.dat` is gzipped NBT. fastnbt hands back a full value tree, which is
 # what lets us edit the fields we own without dropping the ones we don't.

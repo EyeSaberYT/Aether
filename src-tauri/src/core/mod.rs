@@ -17,3 +17,4 @@ pub mod paths;
 pub mod scan;
 pub mod screenshots;
 pub mod servers;
+pub mod skin;

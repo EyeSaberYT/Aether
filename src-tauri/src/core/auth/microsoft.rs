@@ -475,7 +475,7 @@ pub async fn fetch_profile(
 /// Mojang hands back `http://textures.minecraft.net/…`, but the app's CSP only
 /// allows `https://` for that host, so normalise before the url is stored or
 /// handed to the webview.
-fn normalize_texture_url(url: &str) -> String {
+pub(crate) fn normalize_texture_url(url: &str) -> String {
     match url.strip_prefix("http://textures.minecraft.net") {
         Some(rest) => format!("https://textures.minecraft.net{rest}"),
         None => url.to_string(),

@@ -148,6 +148,9 @@ pub fn run() {
             commands::system::system_reveal,
             commands::system::system_open_url,
             commands::system::system_free_space,
+            // ---- skin -------------------------------------------------------
+            commands::skin::skin_current,
+            commands::skin::skin_upload,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Aether");
