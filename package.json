@@ -1,7 +1,7 @@
 {
   "name": "aether-launcher",
   "private": true,
-  "version": "0.1.6",
+  "version": "0.1.6-hotfix",
   "type": "module",
   "description": "Aether - a modern, open-source Minecraft launcher inspired by the Modrinth App.",
   "license": "MIT",
