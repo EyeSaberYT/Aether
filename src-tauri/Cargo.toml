@@ -1,6 +1,6 @@
 [package]
 name = "aether"
-version = "0.1.4"
+version = "0.1.5"
 description = "Aether - a modern, open-source Minecraft launcher"
 authors = ["Aether Contributors"]
 edition = "2021"
