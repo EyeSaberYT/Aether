@@ -183,9 +183,9 @@ pub async fn download_one(
     // Every io error below carries the offending path: a bare "file not found"
     // is impossible to act on, while `…\lib\jvm.cfg.part` tells the user (and
     // us) exactly what went wrong.
-    if let Some(parent) = spec.dest.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            AetherError::msg(format!("Couldn't create {}: {e}", parent.display()))
+    if let Some(_parent) = spec.dest.parent() {
+        std::fs::create_dir_all(_parent).map_err(|e| {
+            AetherError::msg(format!("Couldn't create {}: {e}", _parent.display()))
         })?;
     }
 
@@ -240,12 +240,6 @@ pub async fn download_one(
     // the expected location (extra safety for pack downloads).
     if spec.dest.exists() {
         let _ = std::fs::remove_file(&spec.dest);
-    }
-    // Ensure final move doesn't escape: if parent exists, also do a quick
-    // lexical containment check.
-    if let Some(parent) = spec.dest.parent() {
-        // best-effort: don't allow creating in root-level unexpected places;
-        // the caller should have validated; this is a final guard.
     }
     std::fs::rename(&tmp, &spec.dest).map_err(|e| {
         AetherError::msg(format!(
