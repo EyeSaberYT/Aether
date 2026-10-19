@@ -29,7 +29,7 @@ export function Home() {
   const recent = useMemo(() => instances.slice(1, 5), [instances]);
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-8 py-8">
+    <div className="mx-auto w-full max-w-6xl px-8 py-7">
       <PageHeader
         title="Home"
         description="Welcome back to Aether."
@@ -45,22 +45,28 @@ export function Home() {
         }
       />
 
-      <div className="mt-8">
+      <div className="mt-7">
         {featured ? (
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden border-border/70">
             <div
-              className="relative flex flex-col gap-6 p-6 sm:flex-row sm:items-center"
-              style={{ background: "linear-gradient(135deg, hsl(var(--card)), hsl(var(--muted)))" }}
+              className="relative flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6"
+              style={{
+                background: "linear-gradient(120deg, hsl(var(--card)), hsl(var(--muted) / 0.72))",
+              }}
             >
               <InstanceIcon
                 icon={featured.icon}
                 name={featured.name}
                 id={featured.id}
-                className="h-24 w-24 text-2xl"
+                className="h-20 w-20 rounded-xl text-2xl"
               />
               <div className="min-w-0 flex-1">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Most recent</p>
-                <h2 className="mt-1 truncate text-2xl font-semibold">{featured.name}</h2>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">
+                  Continue playing
+                </p>
+                <h2 className="mt-1 truncate text-2xl font-semibold tracking-tight">
+                  {featured.name}
+                </h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className="font-mono">
                     {featured.gameVersion}
@@ -90,8 +96,8 @@ export function Home() {
           </Card>
         ) : (
           <Card className="flex flex-col items-center gap-4 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-500/15 text-brand-400">
-              <Sparkles className="h-7 w-7" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl border bg-primary/10 text-primary">
+              <Sparkles className="h-6 w-6" />
             </div>
             <div>
               <p className="text-lg font-semibold">No instances yet</p>

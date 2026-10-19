@@ -14,16 +14,19 @@ const NAV_ITEMS = [
 /** Fixed navigation rail with the brand mark and the account switcher. */
 export function Sidebar() {
   return (
-    <aside className="relative flex h-full w-60 shrink-0 flex-col border-r bg-card/40">
-      <div className="flex items-center gap-3 px-5 py-6">
-        <BrandMark className="h-9 w-9 rounded-xl shadow-sm" />
+    <aside className="relative flex h-full w-[220px] shrink-0 flex-col border-r bg-[#17191c]">
+      <div className="flex items-center gap-3 px-4 py-5">
+        <BrandMark className="h-8 w-8 rounded-lg" />
         <div>
           <p className="text-sm font-semibold leading-none tracking-tight">Aether</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Minecraft launcher</p>
+          <p className="mt-1 text-[10px] text-muted-foreground">MINECRAFT LAUNCHER</p>
         </div>
       </div>
 
-      <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-1.5 px-3 pt-2">
+      <div className="px-4 pb-2 pt-5 text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground/70">
+        Workspace
+      </div>
+      <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-1 px-2.5">
         {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
@@ -31,20 +34,20 @@ export function Sidebar() {
             end={end}
             className={({ isActive }) =>
               cn(
-                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-[background-color,color,transform] duration-200 ease-out",
+                "group relative flex items-center gap-3 rounded-md px-3 py-[9px] text-[13px] font-medium transition-colors duration-150",
                 isActive
-                  ? "bg-primary/10 text-primary shadow-sm shadow-primary/5"
-                  : "text-muted-foreground hover:translate-x-0.5 hover:bg-accent hover:text-foreground",
+                  ? "bg-primary/10 text-primary before:absolute before:bottom-2 before:left-0 before:top-2 before:w-[3px] before:rounded-full before:bg-primary"
+                  : "text-muted-foreground hover:bg-white/[0.045] hover:text-foreground",
               )
             }
           >
-            <Icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
+            <Icon className="h-[17px] w-[17px] shrink-0" />
             {label}
           </NavLink>
         ))}
       </nav>
 
-      <div className="border-t bg-background/20 p-3">
+      <div className="border-t border-white/[0.06] p-2.5">
         <AccountMenu />
       </div>
     </aside>

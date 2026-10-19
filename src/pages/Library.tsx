@@ -62,7 +62,7 @@ export function Library() {
   }, [instances, query]);
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-8 py-8">
+    <div className="mx-auto w-full max-w-6xl px-8 py-7">
       <PageHeader
         title="Library"
         description={`${instances.length} ${instances.length === 1 ? "instance" : "instances"}`}
@@ -93,14 +93,21 @@ export function Library() {
         }
       />
 
-      <div className="relative mt-6 max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search instances…"
-          className="pl-9"
-        />
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/75 bg-card p-3">
+        <div className="relative w-full max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search instances…"
+            className="bg-background pl-9"
+          />
+        </div>
+        <p className="px-1 text-xs text-muted-foreground">
+          {query
+            ? `${filtered.length} matching ${filtered.length === 1 ? "instance" : "instances"}`
+            : "Choose an instance to play or manage"}
+        </p>
       </div>
 
       <div className="mt-6">

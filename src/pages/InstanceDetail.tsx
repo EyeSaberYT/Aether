@@ -173,7 +173,11 @@ export function InstanceDetail() {
         <Button variant="ghost" className="mb-4" onClick={() => navigate("/library")}>
           <ArrowLeft /> Library
         </Button>
-        <ErrorState title="Couldn't open this instance" error={error ?? "Not found"} onRetry={load} />
+        <ErrorState
+          title="Couldn't open this instance"
+          error={error ?? "Not found"}
+          onRetry={load}
+        />
       </div>
     );
   }
@@ -182,93 +186,96 @@ export function InstanceDetail() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-8 py-8">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="mb-4 -ml-2"
-        onClick={() => navigate("/library")}
-      >
+      <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => navigate("/library")}>
         <ArrowLeft /> Library
       </Button>
 
       {/* Header */}
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-        <InstanceIcon
-          icon={instance.icon}
-          name={instance.name}
-          id={instance.id}
-          className="h-20 w-20 text-xl"
-        />
+      <section className="relative overflow-hidden rounded-xl border border-border/75 bg-card">
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-gradient-to-l from-primary/[0.045] to-transparent" />
+        <div className="relative flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
+          <InstanceIcon
+            icon={instance.icon}
+            name={instance.name}
+            id={instance.id}
+            className="h-20 w-20 rounded-xl text-xl"
+          />
 
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">{instance.name}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="font-mono">
-              {instance.gameVersion}
-            </Badge>
-            <Badge variant="outline" className={cn(loaderColor(instance.loader))}>
-              {loaderLabel(instance.loader)}
-              {instance.loaderVersion ? ` ${instance.loaderVersion}` : ""}
-            </Badge>
-            <span className="text-xs text-muted-foreground">
-              Played {relativeTime(instance.lastPlayed)}
-            </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Minecraft instance
+            </p>
+            <h1 className="mt-1 truncate text-2xl font-semibold tracking-[-0.03em]">
+              {instance.name}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="font-mono">
+                {instance.gameVersion}
+              </Badge>
+              <Badge variant="outline" className={cn(loaderColor(instance.loader))}>
+                {loaderLabel(instance.loader)}
+                {instance.loaderVersion ? ` ${instance.loaderVersion}` : ""}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                Played {relativeTime(instance.lastPlayed)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="brand"
+              size="lg"
+              disabled={launchingId === instance.id || isRunning}
+              onClick={() => void launch(instance.id)}
+            >
+              {launchingId === instance.id ? <Spinner /> : <Play className="fill-current" />}
+              {isRunning ? "Running" : "Play"}
+            </Button>
+
+            <Button variant="outline" title="Scan mods and packs" onClick={() => setScanOpen(true)}>
+              <ShieldCheck /> Scan
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" title="More">
+                  <Settings2 />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
+                  <SquarePen /> Rename
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void handleDuplicate()}>
+                  <Copy /> Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void handleExport()}>
+                  <Upload /> Export modpack
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void reveal()}>
+                  <FolderOpen /> Open folder
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => setDeleteOpen(true)}
+                >
+                  <Trash2 /> Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="brand"
-            size="lg"
-            disabled={launchingId === instance.id || isRunning}
-            onClick={() => void launch(instance.id)}
-          >
-            {launchingId === instance.id ? <Spinner /> : <Play className="fill-current" />}
-            {isRunning ? "Running" : "Play"}
-          </Button>
-
-          <Button variant="outline" title="Scan mods and packs" onClick={() => setScanOpen(true)}>
-            <ShieldCheck /> Scan
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" title="More">
-                <Settings2 />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
-                <SquarePen /> Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void handleDuplicate()}>
-                <Copy /> Duplicate
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void handleExport()}>
-                <Upload /> Export modpack
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void reveal()}>
-                <FolderOpen /> Open folder
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => setDeleteOpen(true)}
-              >
-                <Trash2 /> Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+      </section>
 
       {/* Tabs */}
       <InstanceUpdates instanceId={instance.id} />
 
-      <Tabs value={tab} onValueChange={setTab} className="mt-8">
+      <Tabs value={tab} onValueChange={setTab} className="mt-7">
         {/* Seven tabs no longer fit when the window is at its minimum width, so
             the list scrolls sideways instead of stretching the layout. */}
-        <TabsList className="max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <TabsList className="max-w-full overflow-x-auto rounded-lg border bg-card p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabsTrigger value="overview">
             <Boxes className="mr-2 h-4 w-4" /> Overview
           </TabsTrigger>
@@ -341,8 +348,8 @@ export function InstanceDetail() {
           <DialogHeader>
             <DialogTitle>Delete “{instance.name}”?</DialogTitle>
             <DialogDescription>
-              This permanently removes the instance and all of its worlds, mods and
-              settings. This can't be undone.
+              This permanently removes the instance and all of its worlds, mods and settings. This
+              can't be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -413,9 +420,7 @@ function OverviewTab({
       {instance.notes && (
         <Card className="p-5 sm:col-span-2">
           <h3 className="text-sm font-semibold">Notes</h3>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
-            {instance.notes}
-          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{instance.notes}</p>
         </Card>
       )}
 
@@ -586,7 +591,9 @@ function ContentRow({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className={cn("truncate text-sm font-medium", !entry.enabled && "text-muted-foreground")}>
+        <p
+          className={cn("truncate text-sm font-medium", !entry.enabled && "text-muted-foreground")}
+        >
           {label}
         </p>
         <p className="truncate text-xs text-muted-foreground">
@@ -716,18 +723,14 @@ function SettingsTab({
             <Textarea
               rows={4}
               value={draft.settings.jvmArgs.join("\n")}
-              onChange={(event) =>
-                patchSettings({ jvmArgs: splitLines(event.target.value) })
-              }
+              onChange={(event) => patchSettings({ jvmArgs: splitLines(event.target.value) })}
             />
           </Field>
           <Field label="Game arguments (one per line)" className="sm:col-span-2">
             <Textarea
               rows={3}
               value={draft.settings.gameArgs.join("\n")}
-              onChange={(event) =>
-                patchSettings({ gameArgs: splitLines(event.target.value) })
-              }
+              onChange={(event) => patchSettings({ gameArgs: splitLines(event.target.value) })}
             />
           </Field>
         </div>
@@ -760,7 +763,10 @@ function SettingsTab({
           </label>
 
           <Field label="Quick Play" className="sm:col-span-2">
-            <QuickPlayEditor value={quickPlay} onChange={(next) => patchSettings({ quickPlay: next })} />
+            <QuickPlayEditor
+              value={quickPlay}
+              onChange={(next) => patchSettings({ quickPlay: next })}
+            />
           </Field>
 
           <Field label="Game directory (blank = default)" className="sm:col-span-2">

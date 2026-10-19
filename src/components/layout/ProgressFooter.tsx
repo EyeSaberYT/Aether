@@ -1,4 +1,4 @@
-import { CheckCircle2, X } from "lucide-react";
+import { CheckCircle2, Download, X } from "lucide-react";
 
 import { Progress } from "@/components/ui/progress";
 import { useProgress } from "@/store/useProgress";
@@ -26,14 +26,16 @@ export function ProgressFooter() {
   return (
     <div
       className={cn(
-        "flex items-center gap-3 border-t px-4 py-2.5 text-sm",
-        done ? "bg-primary/5" : "bg-card/60",
+        "flex items-center gap-3 border-t px-4 py-2.5 text-sm backdrop-blur-sm",
+        done ? "bg-primary/5" : "bg-card/85",
       )}
     >
       {done ? (
         <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
       ) : (
-        <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+          <Download className="h-3.5 w-3.5 animate-pulse" />
+        </span>
       )}
 
       <div className="min-w-0 flex-1">
@@ -46,7 +48,7 @@ export function ProgressFooter() {
               : ""}
           </span>
         </div>
-        {!done && <Progress className="mt-1.5 h-1" value={percent} />}
+        {!done && <Progress className="mt-1.5 h-1.5" value={percent} />}
       </div>
 
       {done && (

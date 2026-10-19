@@ -196,7 +196,7 @@ export function Discover() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-8 py-8">
+    <div className="mx-auto w-full max-w-6xl px-8 py-7">
       <PageHeader
         title="Discover"
         description="Browse mods, modpacks, resource packs, shaders and datapacks from Modrinth and CurseForge."
@@ -204,97 +204,99 @@ export function Discover() {
       />
 
       {/* Type tabs + catalog switch */}
-      <div className="mt-6 flex flex-wrap items-center gap-1.5">
-        {PROJECT_TYPES.map((type) => (
-          <button
-            key={type}
-            onClick={() => setProjectType(type)}
-            className={cn(
-              "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
-              projectType === type
-                ? "border-primary/50 bg-primary/10 text-primary"
-                : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
-            )}
-          >
-            {projectTypeLabel(type)}s
-          </button>
-        ))}
-
-        <div className="ml-auto flex rounded-full border p-0.5">
-          {SOURCES.map((option) => (
+      <div className="mt-6 rounded-xl border border-border/75 bg-card p-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {PROJECT_TYPES.map((type) => (
             <button
-              key={option.value}
-              onClick={() => pickSource(option.value)}
+              key={type}
+              onClick={() => setProjectType(type)}
               className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                source === option.value
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
+                "rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors",
+                projectType === type
+                  ? "border-primary/50 bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
-              {option.label}
+              {projectTypeLabel(type)}s
             </button>
           ))}
+
+          <div className="ml-auto flex rounded-md border bg-background p-0.5">
+            {SOURCES.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => pickSource(option.value)}
+                className={cn(
+                  "rounded px-3 py-1 text-xs font-medium transition-colors",
+                  source === option.value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* Search + filters */}
-      <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={`Search ${projectTypeLabel(projectType).toLowerCase()}s…`}
-            className="pl-9"
-          />
-        </div>
+        {/* Search + filters */}
+        <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={`Search ${projectTypeLabel(projectType).toLowerCase()}s…`}
+              className="bg-background pl-9"
+            />
+          </div>
 
-        <div className="flex items-center gap-3">
-          <SlidersHorizontal className="hidden h-4 w-4 text-muted-foreground lg:block" />
+          <div className="flex items-center gap-3">
+            <SlidersHorizontal className="hidden h-4 w-4 text-muted-foreground lg:block" />
 
-          <Select value={gameVersion} onValueChange={setGameVersion}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Version" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">Any version</SelectItem>
-              {gameVersions.map((version) => (
-                <SelectItem key={version} value={version}>
-                  {version}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {loaderApplies && (
-            <Select value={loader} onValueChange={setLoader}>
-              <SelectTrigger className="w-36">
-                <SelectValue placeholder="Loader" />
+            <Select value={gameVersion} onValueChange={setGameVersion}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Version" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="any">Any loader</SelectItem>
-                {KNOWN_LOADERS.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {loaderLabel(name)}
+                <SelectItem value="any">Any version</SelectItem>
+                {gameVersions.map((version) => (
+                  <SelectItem key={version} value={version}>
+                    {version}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          )}
 
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {sorts.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            {loaderApplies && (
+              <Select value={loader} onValueChange={setLoader}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Loader" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any loader</SelectItem>
+                  {KNOWN_LOADERS.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {loaderLabel(name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {sorts.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -314,6 +316,12 @@ export function Discover() {
           />
         ) : (
           <>
+            <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                {total.toLocaleString()} {total === 1 ? "project" : "projects"}
+              </span>
+              {loading && <span>Refreshing results…</span>}
+            </div>
             <div className={view === "grid" ? CARD_GRID : "space-y-3"}>
               {hits.map((hit) => (
                 <ProjectCard
