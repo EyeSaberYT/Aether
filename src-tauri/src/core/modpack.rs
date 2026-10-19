@@ -359,13 +359,7 @@ fn extract_overrides(pack: &Path, game_dir: &Path) -> Result<()> {
             if relative.is_empty() || entry.is_dir() {
                 continue;
             }
-            // Disallow `..`, absolute paths, Windows drive letters and
-            // backslashes. The pack format uses forward slashes.
-            if relative.contains("..")
-                || relative.starts_with('/')
-                || relative.starts_with('\\')
-                || relative.contains('\\')
-            {
+            if !super::path_security::is_safe_archive_path(relative) {
                 continue;
             }
             let out_path = game_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
@@ -373,6 +367,9 @@ fn extract_overrides(pack: &Path, game_dir: &Path) -> Result<()> {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     AetherError::msg(format!("Couldn't create {}: {e}", parent.display()))
                 })?;
+            }
+            if !super::path_security::destination_is_within(game_dir, &out_path) {
+                continue;
             }
             let mut out = std::fs::File::create(&out_path).map_err(|e| {
                 AetherError::msg(format!("Couldn't create {}: {e}", out_path.display()))

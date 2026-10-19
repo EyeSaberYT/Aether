@@ -15,6 +15,7 @@ pub mod launch;
 pub mod minecraft;
 pub mod modpack;
 pub mod paths;
+pub mod path_security;
 pub mod scan;
 pub mod screenshots;
 pub mod servers;

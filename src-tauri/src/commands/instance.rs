@@ -10,6 +10,7 @@ use crate::core::instance::{
 };
 use crate::core::minecraft::loader;
 use crate::core::modpack;
+use crate::core::path_security::{canonical_path_is_within, is_safe_filename};
 use crate::core::{java, launch};
 use crate::error::{AetherError, Result};
 use crate::state::AppState;
@@ -277,17 +278,32 @@ pub async fn instance_delete(
     id: String,
     delete_files: bool,
 ) -> Result<()> {
+    if id.is_empty()
+        || id == "."
+        || id == ".."
+        || id.chars().any(|c| matches!(c, '/' | '\\' | ':'))
+        || id.chars().any(char::is_control)
     {
-        let mut store = state.instances.write().await;
-        store.instances.retain(|i| i.id != id);
-        store.save(&state.paths)?;
+        return Err(AetherError::msg("Invalid instance id."));
     }
+
+    let mut store = state.instances.write().await;
+    store.get(&id)?;
     if delete_files {
         let dir = state.paths.instance_dir(&id);
         if dir.exists() {
+            let instances_root = state.paths.instances_dir().canonicalize()?;
+            let canonical_dir = dir.canonicalize()?;
+            if canonical_dir.parent() != Some(instances_root.as_path()) {
+                return Err(AetherError::msg(
+                    "The instance folder resolves outside the launcher data directory.",
+                ));
+            }
             std::fs::remove_dir_all(&dir)?;
         }
     }
+    store.instances.retain(|i| i.id != id);
+    store.save(&state.paths)?;
     Ok(())
 }
 
@@ -403,6 +419,38 @@ fn filename_matches(tracked: &str, file_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Accept only a listed content file directly inside one of the four
+/// user-managed content folders. This keeps IPC callers from renaming or
+/// deleting arbitrary files elsewhere in the game directory.
+fn is_managed_content_file(root: &std::path::Path, path: &std::path::Path) -> bool {
+    let (Ok(canonical_root), Ok(canonical_path)) = (root.canonicalize(), path.canonicalize()) else {
+        return false;
+    };
+    let Some(parent) = canonical_path.parent() else {
+        return false;
+    };
+    if !canonical_path.starts_with(&canonical_root) {
+        return false;
+    }
+    let Some(name) = canonical_path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let base_name = name.strip_suffix(".disabled").unwrap_or(name);
+    if !base_name.to_ascii_lowercase().ends_with(".jar")
+        && !base_name.to_ascii_lowercase().ends_with(".zip")
+    {
+        return false;
+    }
+
+    ["mods", "resourcepacks", "shaderpacks", "datapacks"]
+        .iter()
+        .any(|folder| {
+            let folder = canonical_root.join(folder);
+            folder.canonicalize().ok().as_deref() == Some(parent)
+                && canonical_path_is_within(&canonical_root, &folder)
+        })
+}
+
 #[tauri::command]
 pub async fn instance_content(state: State<'_, AppState>, id: String) -> Result<Vec<ContentEntry>> {
     let instance = state.instances.read().await.get(&id)?.clone();
@@ -464,19 +512,10 @@ pub async fn instance_toggle_content(
     let instance = state.instances.read().await.get(&id)?.clone();
     let root = game_dir(&state.paths, &instance);
     let source = PathBuf::from(&path);
-
-    // Guard against path traversal: the file must live inside the instance.
-    // Use lexical containment first; if it fails due to symlinks/junctions the
-    // canonical check below is a best-effort second guard.
-    let mut ok = source.starts_with(&root);
-    if !ok {
-        if let (Ok(canon_src), Ok(canon_root)) = (source.canonicalize(), root.canonicalize()) {
-            ok = canon_src.starts_with(&canon_root);
-        }
-    }
-    if !ok {
+    if !source.is_file() || !is_managed_content_file(&root, &source) {
         return Err(AetherError::msg("That file isn't part of this instance."));
     }
+    let source = source.canonicalize()?;
 
     let target = if enabled {
         PathBuf::from(source.to_string_lossy().trim_end_matches(".disabled").to_string())
@@ -484,9 +523,13 @@ pub async fn instance_toggle_content(
         PathBuf::from(format!("{}.disabled", source.to_string_lossy()))
     };
 
-    if source.exists() {
-        std::fs::rename(&source, &target)?;
+    if !canonical_path_is_within(&root, target.parent().unwrap_or(&root)) {
+        return Err(AetherError::msg("That file isn't part of this instance."));
     }
+    if target.exists() {
+        return Err(AetherError::msg("A file with that name already exists."));
+    }
+    std::fs::rename(&source, &target)?;
     Ok(target.to_string_lossy().to_string())
 }
 
@@ -499,19 +542,10 @@ pub async fn instance_delete_content(
     let instance = state.instances.read().await.get(&id)?.clone();
     let root = game_dir(&state.paths, &instance);
     let target = PathBuf::from(&path);
-
-    let mut ok = target.starts_with(&root);
-    if !ok {
-        if let (Ok(canon_t), Ok(canon_root)) = (target.canonicalize(), root.canonicalize()) {
-            ok = canon_t.starts_with(&canon_root);
-        }
-    }
-    if !ok {
+    if !target.is_file() || !is_managed_content_file(&root, &target) {
         return Err(AetherError::msg("That file isn't part of this instance."));
     }
-    if target.exists() {
-        std::fs::remove_file(target)?;
-    }
+    std::fs::remove_file(target)?;
     Ok(())
 }
 
@@ -524,8 +558,16 @@ pub async fn instance_import_files(
     folder: Option<String>,
 ) -> Result<usize> {
     let instance = state.instances.read().await.get(&id)?.clone();
-    let dest_dir = game_dir(&state.paths, &instance).join(folder.unwrap_or_else(|| "mods".into()));
+    let folder = folder.unwrap_or_else(|| "mods".into());
+    if !matches!(folder.as_str(), "mods" | "resourcepacks" | "shaderpacks" | "datapacks") {
+        return Err(AetherError::msg("Unsupported content folder."));
+    }
+    let game_root = game_dir(&state.paths, &instance);
+    let dest_dir = game_root.join(folder);
     std::fs::create_dir_all(&dest_dir)?;
+    if !canonical_path_is_within(&game_root, &dest_dir) {
+        return Err(AetherError::msg("The content folder resolves outside this instance."));
+    }
 
     let mut copied = 0;
     for path in paths {
@@ -538,17 +580,14 @@ pub async fn instance_import_files(
             .map(|n| n.to_string_lossy().to_string())
             .ok_or_else(|| AetherError::msg("invalid file name"))?;
         // Restrict filename to a single component.
-        if name.contains('/') || name.contains('\\') || name.contains("..") {
+        if !is_safe_filename(&name)
+            || !name.to_ascii_lowercase().ends_with(".jar")
+                && !name.to_ascii_lowercase().ends_with(".zip")
+        {
             continue;
         }
         let dest = dest_dir.join(&name);
-        let mut ok = dest.starts_with(&dest_dir);
-        if !ok {
-            if let (Ok(canon_d), Ok(canon_dd)) = (dest.canonicalize(), dest_dir.canonicalize()) {
-                ok = canon_d.starts_with(&canon_dd);
-            }
-        }
-        if !ok {
+        if dest.exists() {
             continue;
         }
         std::fs::copy(&source, dest)?;

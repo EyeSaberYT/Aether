@@ -13,6 +13,7 @@ use crate::api::curseforge::CurseForgeClient;
 use crate::api::modrinth::{ModrinthClient, Project, ResolvedFile, SearchFilters, SearchResponse, Tag, Version};
 use crate::core::download::{download_many, DownloadSpec, Progress, ProgressSink};
 use crate::core::instance::{content_dir, game_dir, Instance, InstalledProject, LoaderKind};
+use crate::core::path_security::{destination_is_within, is_safe_filename};
 use crate::core::{cfpack, modpack};
 use crate::core::{java, minecraft::loader};
 use crate::error::{AetherError, Result};
@@ -225,9 +226,17 @@ async fn install_resolved(
     let mut records: Vec<InstalledProject> = vec![];
 
     for file in &resolved {
+        if !is_safe_filename(&file.filename) {
+            return Err(AetherError::msg("The provider returned an unsafe file name."));
+        }
         let folder = content_dir(&root, &file.project_type);
         std::fs::create_dir_all(&folder)?;
         let dest = folder.join(&file.filename);
+        if !destination_is_within(&root, &dest) {
+            return Err(AetherError::msg(
+                "The content folder resolves outside this instance.",
+            ));
+        }
 
         let mut spec = DownloadSpec::new(file.url.clone(), &dest)
             .with_size(file.size)
@@ -277,8 +286,14 @@ async fn install_resolved(
                 {
                     let old = entry.installed_projects.remove(previous);
                     for file in old.files {
-                        let path = content_dir(&root, &old.project_type).join(file);
-                        let _ = std::fs::remove_file(path);
+                        if !is_safe_filename(&file) {
+                            continue;
+                        }
+                        let folder = content_dir(&root, &old.project_type);
+                        let path = folder.join(file);
+                        if destination_is_within(&root, &path) && path.is_file() {
+                            let _ = std::fs::remove_file(path);
+                        }
                     }
                 }
             }

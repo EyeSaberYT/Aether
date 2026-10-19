@@ -14,16 +14,16 @@ const NAV_ITEMS = [
 /** Fixed navigation rail with the brand mark and the account switcher. */
 export function Sidebar() {
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-card/40">
-      <div className="flex items-center gap-2.5 px-5 py-5">
-        <BrandMark />
+    <aside className="relative flex h-full w-60 shrink-0 flex-col border-r bg-card/40">
+      <div className="flex items-center gap-3 px-5 py-6">
+        <BrandMark className="h-9 w-9 rounded-xl shadow-sm" />
         <div>
           <p className="text-sm font-semibold leading-none tracking-tight">Aether</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">Minecraft launcher</p>
         </div>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-3">
+      <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-1.5 px-3 pt-2">
         {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
@@ -31,20 +31,20 @@ export function Sidebar() {
             end={end}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-[background-color,color,transform] duration-200 ease-out",
                 isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  ? "bg-primary/10 text-primary shadow-sm shadow-primary/5"
+                  : "text-muted-foreground hover:translate-x-0.5 hover:bg-accent hover:text-foreground",
               )
             }
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105" />
             {label}
           </NavLink>
         ))}
       </nav>
 
-      <div className="border-t p-3">
+      <div className="border-t bg-background/20 p-3">
         <AccountMenu />
       </div>
     </aside>

@@ -74,8 +74,8 @@ export function ProjectCard({ hit, layout }: { hit: SearchHit; layout: ViewMode 
   };
 
   const base = cn(
-    "group cursor-pointer rounded-xl border bg-card transition-all",
-    "hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5",
+    "group cursor-pointer rounded-2xl border bg-card transition-[transform,border-color,box-shadow] duration-200 ease-out",
+    "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
   );
 
   if (layout === "grid") {

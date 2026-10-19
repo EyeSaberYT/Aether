@@ -20,6 +20,9 @@ use serde::Deserialize;
 use super::download::{download_many, DownloadSpec, Progress, ProgressSink};
 use super::instance::{InstalledProject, LoaderKind};
 use super::modpack::ModpackPreview;
+use super::path_security::{
+    destination_is_within, is_safe_archive_path, is_safe_filename,
+};
 use crate::api::curseforge::{self, CurseForgeClient};
 use crate::api::modrinth::{Project, Version};
 use crate::error::{AetherError, Result};
@@ -170,24 +173,17 @@ pub fn extract_overrides(pack: &Path, game_dir: &Path, overrides_dir: &str) -> R
         if relative.is_empty() || entry.is_dir() {
             continue;
         }
-        if relative.contains("..")
-            || relative.starts_with('/')
-            || relative.starts_with('\\')
-            || relative.contains('\\')
-        {
+        if !is_safe_archive_path(relative) {
             continue;
-        }
-        let first = relative.chars().next();
-        if let Some(c) = first {
-            if c.is_ascii_alphabetic() && relative.chars().nth(1) == Some(':') {
-                continue;
-            }
         }
         let out_path = game_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
         if let Some(parent) = out_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
                 AetherError::msg(format!("Couldn't create {}: {e}", parent.display()))
             })?;
+        }
+        if !destination_is_within(game_dir, &out_path) {
+            continue;
         }
         let mut out = std::fs::File::create(&out_path).map_err(|e| {
             AetherError::msg(format!("Couldn't create {}: {e}", out_path.display()))
@@ -278,6 +274,11 @@ pub async fn install(
     let mut records: Vec<InstalledProject> = vec![];
     let mods_dir = game_dir.join("mods");
     std::fs::create_dir_all(&mods_dir)?;
+    if !destination_is_within(game_dir, &mods_dir) {
+        return Err(AetherError::msg(
+            "The mods folder resolves outside this instance.",
+        ));
+    }
 
     for version in &versions {
         let Some(file) = version.files.first() else {
@@ -286,7 +287,11 @@ pub async fn install(
         if file.url.is_empty() {
             continue;
         }
-        let filename = file.filename.replace('/', "_");
+        if !is_safe_filename(&file.filename) {
+            log::warn!("Skipping CurseForge file with unsafe filename: {:?}", file.filename);
+            continue;
+        }
+        let filename = file.filename.clone();
         let mut spec = DownloadSpec::new(&file.url, mods_dir.join(&filename))
             .with_size(file.size)
             .with_label(&file.filename);

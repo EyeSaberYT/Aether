@@ -1,8 +1,9 @@
 import { useEffect } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 import { ProgressFooter } from "@/components/layout/ProgressFooter";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { WindowControls } from "@/components/layout/WindowControls";
 import { useBackendEvents } from "@/hooks/useBackendEvents";
 import { useUpdatePrompt } from "@/hooks/useUpdatePrompt";
 import { useAccounts } from "@/store/useAccounts";
@@ -15,6 +16,7 @@ import { useSettings } from "@/store/useSettings";
  * the middle and the progress footer across the bottom.
  */
 export function AppShell() {
+  const location = useLocation();
   useBackendEvents();
   useUpdatePrompt();
 
@@ -32,13 +34,18 @@ export function AppShell() {
   }, [loadSettings, refreshAccounts, refreshInstances, refreshRunning]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <main className="min-h-0 flex-1 overflow-y-auto">
-          <Outlet />
-        </main>
-        <ProgressFooter />
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+      <WindowControls />
+      <div className="flex min-h-0 flex-1">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main className="min-h-0 flex-1 overflow-y-auto scroll-smooth">
+            <div key={location.pathname} className="page-enter min-h-full">
+              <Outlet />
+            </div>
+          </main>
+          <ProgressFooter />
+        </div>
       </div>
     </div>
   );
