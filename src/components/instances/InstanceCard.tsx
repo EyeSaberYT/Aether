@@ -39,8 +39,8 @@ function InstanceSurface({
         if (event.key === "Enter") navigate(`/library/${instance.id}`);
       }}
       className={cn(
-        "group cursor-pointer rounded-xl border bg-card transition-[border-color,background-color] duration-150 ease-out",
-        "hover:border-border/90 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative cursor-pointer overflow-hidden rounded-2xl border border-border/75 bg-card/90 transition-[transform,border-color,background-color,box-shadow] duration-200",
+        "hover:-translate-y-0.5 hover:border-primary/25 hover:bg-card hover:shadow-xl hover:shadow-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
     >
@@ -109,17 +109,22 @@ function InstanceScanButton({ instance, onScan }: Pick<InstanceCardProps, "insta
 /** A single card in the library grid. */
 export function InstanceCard({ instance, running, launching, onPlay, onScan }: InstanceCardProps) {
   return (
-    <InstanceSurface instance={instance} className="flex flex-col gap-3 p-3">
-      <div className="flex items-center gap-3">
+    <InstanceSurface instance={instance} className="flex flex-col gap-4 p-4">
+      <div className="flex items-start gap-3">
         <InstanceIcon
           icon={instance.icon}
           name={instance.name}
           id={instance.id}
-          className="h-10 w-10 rounded-md text-sm"
+          className="h-12 w-12 rounded-xl text-sm ring-1 ring-white/[0.07]"
         />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold">{instance.name}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        <div className="min-w-0 flex-1 pt-0.5">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-semibold tracking-tight">{instance.name}</p>
+            {running && (
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.75)]" />
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <Badge variant="outline" className="font-mono text-[11px]">
               {instance.gameVersion}
             </Badge>
@@ -130,11 +135,11 @@ export function InstanceCard({ instance, running, launching, onPlay, onScan }: I
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span>
+      <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-3 text-[11px] text-muted-foreground">
+        <span className="font-medium text-foreground/80">
           {instance.modCount} {instance.modCount === 1 ? "mod" : "mods"}
         </span>
-        <span className="truncate">Played {relativeTime(instance.lastPlayed)}</span>
+        <span className="truncate">{relativeTime(instance.lastPlayed)}</span>
       </div>
 
       <div className="flex items-center gap-2">

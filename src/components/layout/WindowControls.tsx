@@ -17,7 +17,8 @@ export function WindowControls() {
 
   return (
     <header className="drag-region flex h-9 shrink-0 items-center border-b bg-[#17191c]">
-      <div className="flex items-center px-3 text-[11px] font-medium text-muted-foreground">
+      <div className="flex items-center gap-2 px-3 text-[11px] font-medium text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
         <span>Aether</span>
       </div>
 

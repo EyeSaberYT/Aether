@@ -153,7 +153,7 @@ export function InstanceDetail() {
 
   if (loading) {
     return (
-      <div className="mx-auto w-full max-w-5xl space-y-6 px-8 py-8">
+      <div className="mx-auto w-full max-w-6xl space-y-6 px-8 py-8">
         <Skeleton className="h-8 w-40" />
         <div className="flex gap-5">
           <Skeleton className="h-20 w-20 rounded-xl" />
@@ -169,7 +169,7 @@ export function InstanceDetail() {
 
   if (error || !instance) {
     return (
-      <div className="mx-auto w-full max-w-5xl px-8 py-8">
+      <div className="mx-auto w-full max-w-6xl px-8 py-8">
         <Button variant="ghost" className="mb-4" onClick={() => navigate("/library")}>
           <ArrowLeft /> Library
         </Button>
@@ -185,15 +185,15 @@ export function InstanceDetail() {
   const isRunning = running.includes(instance.id);
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-8 py-8">
+    <div className="mx-auto w-full max-w-6xl px-8 py-8">
       <Button variant="ghost" size="sm" className="mb-4 -ml-2" onClick={() => navigate("/library")}>
         <ArrowLeft /> Library
       </Button>
 
       {/* Header */}
-      <section className="relative overflow-hidden rounded-xl border border-border/75 bg-card">
+      <section className="relative overflow-hidden rounded-2xl border border-border/75 bg-card shadow-sm">
         <div className="pointer-events-none absolute inset-y-0 right-0 w-1/2 bg-gradient-to-l from-primary/[0.045] to-transparent" />
-        <div className="relative flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:p-6">
+        <div className="relative flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:p-7">
           <InstanceIcon
             icon={instance.icon}
             name={instance.name}
@@ -272,29 +272,31 @@ export function InstanceDetail() {
       {/* Tabs */}
       <InstanceUpdates instanceId={instance.id} />
 
-      <Tabs value={tab} onValueChange={setTab} className="mt-7">
-        {/* Seven tabs no longer fit when the window is at its minimum width, so
-            the list scrolls sideways instead of stretching the layout. */}
-        <TabsList className="max-w-full overflow-x-auto rounded-lg border bg-card p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <TabsTrigger value="overview">
+      <Tabs
+        value={tab}
+        onValueChange={setTab}
+        className="mt-6 grid grid-cols-[150px_minmax(0,1fr)] items-start gap-5 max-[1050px]:grid-cols-[132px_minmax(0,1fr)]"
+      >
+        <TabsList className="sticky top-5 flex h-fit w-full flex-col items-stretch justify-start gap-1 rounded-2xl border border-border/75 bg-card/80 p-2">
+          <TabsTrigger className="w-full justify-start" value="overview">
             <Boxes className="mr-2 h-4 w-4" /> Overview
           </TabsTrigger>
-          <TabsTrigger value="content">
+          <TabsTrigger className="w-full justify-start" value="content">
             <Package className="mr-2 h-4 w-4" /> Content
           </TabsTrigger>
-          <TabsTrigger value="servers">
+          <TabsTrigger className="w-full justify-start" value="servers">
             <Server className="mr-2 h-4 w-4" /> Servers
           </TabsTrigger>
-          <TabsTrigger value="worlds">
+          <TabsTrigger className="w-full justify-start" value="worlds">
             <Globe className="mr-2 h-4 w-4" /> Worlds
           </TabsTrigger>
-          <TabsTrigger value="screenshots">
+          <TabsTrigger className="w-full justify-start" value="screenshots">
             <Camera className="mr-2 h-4 w-4" /> Screenshots
           </TabsTrigger>
-          <TabsTrigger value="settings">
+          <TabsTrigger className="w-full justify-start" value="settings">
             <Settings2 className="mr-2 h-4 w-4" /> Settings
           </TabsTrigger>
-          <TabsTrigger value="console">
+          <TabsTrigger className="w-full justify-start" value="console">
             <Terminal className="mr-2 h-4 w-4" /> Console
           </TabsTrigger>
         </TabsList>

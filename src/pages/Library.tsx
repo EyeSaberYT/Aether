@@ -1,5 +1,15 @@
 import { useMemo, useState } from "react";
-import { Download, FolderInput, LibraryBig, PackagePlus, Plus, Search } from "lucide-react";
+import {
+  Activity,
+  Boxes,
+  Download,
+  FolderInput,
+  LibraryBig,
+  PackagePlus,
+  Plus,
+  Search,
+  type LucideIcon,
+} from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -11,8 +21,8 @@ import {
   asViewMode,
   type ViewMode,
 } from "@/components/common/ViewToggle";
-import { ImportModpackDialog } from "@/components/instances/ImportModpackDialog";
 import { ImportLauncherDialog } from "@/components/instances/ImportLauncherDialog";
+import { ImportModpackDialog } from "@/components/instances/ImportModpackDialog";
 import { InstanceCard, InstanceRow } from "@/components/instances/InstanceCard";
 import { NewInstanceDialog } from "@/components/instances/NewInstanceDialog";
 import { ScanDialog } from "@/components/instances/ScanDialog";
@@ -31,44 +41,42 @@ import type { InstanceSummary } from "@/lib/tauri";
 import { useInstances } from "@/store/useInstances";
 import { useProgress } from "@/store/useProgress";
 
-/** The instance library: search, create and launch. */
+/** Instance collection. Creation, import and scanning continue to use their existing flows. */
 export function Library() {
   const instances = useInstances((state) => state.instances);
   const loading = useInstances((state) => state.loading);
   const loaded = useInstances((state) => state.loaded);
   const running = useProgress((state) => state.running);
   const { launchingId, launch } = useLaunchInstance();
-
   const [query, setQuery] = useState("");
-  const [newOpen, setNewOpen] = useState(false);
-  const [importLauncherOpen, setImportLauncherOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  // One scan dialog serves the whole library; it opens for whichever instance
-  // was picked, rather than one dialog living on every card.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [launcherImportOpen, setLauncherImportOpen] = useState(false);
+  const [packImportOpen, setPackImportOpen] = useState(false);
   const [scanTarget, setScanTarget] = useState<InstanceSummary | null>(null);
   const [storedView, setStoredView] = usePersistentState<ViewMode>(VIEW_KEY, DEFAULT_VIEW);
-  // Storage is user-writable, so narrow it before it reaches a branch.
   const view = asViewMode(storedView);
 
   const filtered = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) return instances;
-    return instances.filter(
-      (instance) =>
-        instance.name.toLowerCase().includes(term) ||
-        instance.gameVersion.toLowerCase().includes(term) ||
-        instance.loader.toLowerCase().includes(term),
+    const needle = query.trim().toLowerCase();
+    if (!needle) return instances;
+    return instances.filter((instance) =>
+      [instance.name, instance.gameVersion, instance.loader].some((field) =>
+        field.toLowerCase().includes(needle),
+      ),
     );
   }, [instances, query]);
 
+  const runningCount = instances.filter((instance) => running.includes(instance.id)).length;
+  const modCount = instances.reduce((sum, instance) => sum + instance.modCount, 0);
+
   return (
-    <div className="mx-auto w-full max-w-6xl px-8 py-7">
+    <div className="screen-page">
       <PageHeader
-        title="Library"
-        description={`${instances.length} ${instances.length === 1 ? "instance" : "instances"}`}
+        title="Instances"
+        description="Every Minecraft setup, organized and ready to launch."
         actions={
           <>
-            <ViewToggle view={view} onChange={setStoredView} label="Library layout" />
+            <ViewToggle view={view} onChange={setStoredView} label="Instance layout" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline">
@@ -76,104 +84,146 @@ export function Library() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onClick={() => setImportLauncherOpen(true)}>
-                  <FolderInput className="mr-2 h-4 w-4" />
-                  From another launcher
+                <DropdownMenuItem onClick={() => setLauncherImportOpen(true)}>
+                  <FolderInput /> From another launcher
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setImportOpen(true)}>
-                  <PackagePlus className="mr-2 h-4 w-4" />
-                  Modpack file (.mrpack / .zip)
+                <DropdownMenuItem onClick={() => setPackImportOpen(true)}>
+                  <PackagePlus /> Modpack file (.mrpack / .zip)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button variant="brand" onClick={() => setNewOpen(true)}>
+            <Button variant="brand" onClick={() => setCreateOpen(true)}>
               <Plus /> New instance
             </Button>
           </>
         }
       />
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/75 bg-card p-3">
-        <div className="relative w-full max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search instances…"
-            className="bg-background pl-9"
-          />
+      <section className="mt-8 grid grid-cols-3 gap-3">
+        <CollectionMetric icon={Boxes} label="My instances" value={instances.length} />
+        <CollectionMetric icon={PackagePlus} label="Mods installed" value={modCount} />
+        <CollectionMetric
+          icon={Activity}
+          label="Currently running"
+          value={runningCount}
+          live={runningCount > 0}
+        />
+      </section>
+
+      <section className="mt-6 overflow-hidden rounded-2xl border border-border/80 bg-card/80">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 p-3">
+          <div className="relative w-full max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find an instance by name, version or loader"
+              className="bg-background pl-9"
+            />
+          </div>
+          <span className="px-2 text-xs text-muted-foreground">
+            {query
+              ? `${filtered.length} results`
+              : `${instances.length} ${instances.length === 1 ? "instance" : "instances"}`}
+          </span>
         </div>
-        <p className="px-1 text-xs text-muted-foreground">
-          {query
-            ? `${filtered.length} matching ${filtered.length === 1 ? "instance" : "instances"}`
-            : "Choose an instance to play or manage"}
-        </p>
-      </div>
 
-      <div className="mt-6">
-        {loading && !loaded ? (
-          <div className={CARD_GRID}>
-            {Array.from({ length: 8 }).map((_, index) => (
-              <Skeleton key={index} className="h-36 rounded-xl" />
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
-          <EmptyState
-            icon={LibraryBig}
-            title={query ? "No matches" : "Your library is empty"}
-            description={
-              query
-                ? "Try a different search term."
-                : "Create an instance to install mods, loaders and shaders."
-            }
-            action={
-              !query && (
-                <Button variant="brand" onClick={() => setNewOpen(true)}>
-                  <Plus /> New instance
-                </Button>
-              )
-            }
-          />
-        ) : view === "list" ? (
-          <div className="flex flex-col gap-2">
-            {filtered.map((instance) => (
-              <InstanceRow
-                key={instance.id}
-                instance={instance}
-                running={running.includes(instance.id)}
-                launching={launchingId === instance.id}
-                onPlay={() => void launch(instance.id)}
-                onScan={setScanTarget}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className={CARD_GRID}>
-            {filtered.map((instance) => (
-              <InstanceCard
-                key={instance.id}
-                instance={instance}
-                running={running.includes(instance.id)}
-                launching={launchingId === instance.id}
-                onPlay={() => void launch(instance.id)}
-                onScan={setScanTarget}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+        <div className="p-4">
+          {loading && !loaded ? (
+            <div className={CARD_GRID}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-40 rounded-2xl" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={LibraryBig}
+              title={query ? "No matching instances" : "Your library is empty"}
+              description={
+                query
+                  ? "Try another name, game version or loader."
+                  : "Create an instance, import an existing setup, or start with a modpack."
+              }
+              action={
+                !query ? (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button variant="brand" onClick={() => setCreateOpen(true)}>
+                      <Plus /> New instance
+                    </Button>
+                    <Button variant="outline" onClick={() => setPackImportOpen(true)}>
+                      <PackagePlus /> Import modpack
+                    </Button>
+                  </div>
+                ) : undefined
+              }
+            />
+          ) : view === "list" ? (
+            <div className="flex flex-col gap-2">
+              {filtered.map((instance) => (
+                <InstanceRow
+                  key={instance.id}
+                  instance={instance}
+                  running={running.includes(instance.id)}
+                  launching={launchingId === instance.id}
+                  onPlay={() => void launch(instance.id)}
+                  onScan={setScanTarget}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className={CARD_GRID}>
+              {filtered.map((instance) => (
+                <InstanceCard
+                  key={instance.id}
+                  instance={instance}
+                  running={running.includes(instance.id)}
+                  launching={launchingId === instance.id}
+                  onPlay={() => void launch(instance.id)}
+                  onScan={setScanTarget}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
-      <NewInstanceDialog open={newOpen} onOpenChange={setNewOpen} />
-      <ImportModpackDialog open={importOpen} onOpenChange={setImportOpen} />
-      <ImportLauncherDialog open={importLauncherOpen} onOpenChange={setImportLauncherOpen} />
+      <NewInstanceDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ImportLauncherDialog open={launcherImportOpen} onOpenChange={setLauncherImportOpen} />
+      <ImportModpackDialog open={packImportOpen} onOpenChange={setPackImportOpen} />
       <ScanDialog
         open={scanTarget !== null}
-        onOpenChange={(next) => {
-          if (!next) setScanTarget(null);
+        onOpenChange={(open) => {
+          if (!open) setScanTarget(null);
         }}
         instanceId={scanTarget?.id ?? ""}
         instanceName={scanTarget?.name ?? ""}
       />
+    </div>
+  );
+}
+
+function CollectionMetric({
+  icon: Icon,
+  label,
+  value,
+  live = false,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  live?: boolean;
+}) {
+  return (
+    <div className="metric-card flex min-w-0 items-center gap-3 rounded-2xl border border-border/70 bg-card/60 px-4 py-3">
+      <span
+        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${live ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
+      >
+        <Icon className="h-[18px] w-[18px]" />
+      </span>
+      <span className="min-w-0">
+        <small className="block truncate text-[11px] text-muted-foreground">{label}</small>
+        <strong className="text-lg font-bold tabular-nums">{value.toLocaleString()}</strong>
+      </span>
     </div>
   );
 }

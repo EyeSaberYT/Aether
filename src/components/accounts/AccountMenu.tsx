@@ -44,10 +44,10 @@ export function AccountMenu() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex w-full items-center gap-3 rounded-lg border border-transparent p-2 text-left transition-colors hover:border-border hover:bg-accent/50">
+          <button className="flex w-full items-center gap-3 rounded-xl border border-transparent p-2.5 text-left transition-colors hover:border-border/70 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <SkinAvatar name={account.username} kind={account.kind} skinUrl={account.skinUrl} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{account.username}</p>
+              <p className="truncate text-[13px] font-semibold">{account.username}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {account.kind === "microsoft" ? "Microsoft account" : "Offline profile"}
               </p>

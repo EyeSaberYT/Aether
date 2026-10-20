@@ -9,12 +9,18 @@ interface PageHeaderProps {
   className?: string;
 }
 
-/** Consistent page title block used at the top of every screen. */
+/** Screen heading used by every top-level route. */
 export function PageHeader({ title, description, actions, className }: PageHeaderProps) {
   return (
-    <div className={cn("flex flex-wrap items-end justify-between gap-x-8 gap-y-4", className)}>
+    <header
+      className={cn(
+        "screen-heading flex flex-wrap items-end justify-between gap-x-8 gap-y-4",
+        className,
+      )}
+    >
       <div className="min-w-0">
-        <h1 className="truncate text-[1.7rem] font-semibold tracking-[-0.035em] sm:text-3xl">
+        <p className="eyebrow mb-2">Aether / Workspace</p>
+        <h1 className="truncate text-[1.85rem] font-bold tracking-[-0.045em] sm:text-[2.15rem]">
           {title}
         </h1>
         {description && (
@@ -24,6 +30,6 @@ export function PageHeader({ title, description, actions, className }: PageHeade
         )}
       </div>
       {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
-    </div>
+    </header>
   );
 }

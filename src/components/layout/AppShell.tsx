@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
 import { ProgressFooter } from "@/components/layout/ProgressFooter";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { WindowControls } from "@/components/layout/WindowControls";
+import { Settings } from "@/pages/Settings";
 import { useBackendEvents } from "@/hooks/useBackendEvents";
 import { useUpdatePrompt } from "@/hooks/useUpdatePrompt";
 import { useAccounts } from "@/store/useAccounts";
@@ -17,6 +18,7 @@ import { useSettings } from "@/store/useSettings";
  */
 export function AppShell() {
   const location = useLocation();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   useBackendEvents();
   useUpdatePrompt();
 
@@ -34,19 +36,20 @@ export function AppShell() {
   }, [loadSettings, refreshAccounts, refreshInstances, refreshRunning]);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+    <div className="app-frame flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
       <WindowControls />
       <div className="flex min-h-0 flex-1">
-        <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <main className="min-h-0 flex-1 overflow-y-auto scroll-smooth">
+        <Sidebar onOpenSettings={() => setSettingsOpen(true)} />
+        <section className="flex min-w-0 flex-1 flex-col">
+          <main className="launcher-main min-h-0 flex-1 overflow-y-auto">
             <div key={location.pathname} className="page-enter min-h-full">
               <Outlet />
             </div>
           </main>
           <ProgressFooter />
-        </div>
+        </section>
       </div>
+      <Settings open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }

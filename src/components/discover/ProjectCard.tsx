@@ -74,15 +74,15 @@ export function ProjectCard({ hit, layout }: { hit: SearchHit; layout: ViewMode 
   };
 
   const base = cn(
-    "group cursor-pointer rounded-xl border bg-card transition-[border-color,background-color] duration-150 ease-out",
-    "hover:border-border/90 hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "group cursor-pointer rounded-2xl border border-border/75 bg-card/90 transition-[transform,border-color,background-color,box-shadow] duration-200",
+    "hover:-translate-y-0.5 hover:border-primary/25 hover:bg-card hover:shadow-xl hover:shadow-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
   );
 
   if (layout === "grid") {
     return (
-      <div {...surface} className={cn(base, "flex flex-col gap-3 p-3.5")}>
+      <div {...surface} className={cn(base, "flex min-h-[188px] flex-col gap-3 p-4")}>
         <div className="flex items-start gap-3">
-          <ProjectIcon hit={hit} className="h-12 w-12" />
+          <ProjectIcon hit={hit} className="h-12 w-12 rounded-xl" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold group-hover:text-primary">{hit.title}</p>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">by {hit.author}</p>
@@ -92,7 +92,9 @@ export function ProjectCard({ hit, layout }: { hit: SearchHit; layout: ViewMode 
           </div>
         </div>
 
-        <p className="line-clamp-2 text-xs text-muted-foreground">{hit.description}</p>
+        <p className="line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
+          {hit.description}
+        </p>
 
         <ProjectMeta
           hit={hit}
@@ -103,8 +105,8 @@ export function ProjectCard({ hit, layout }: { hit: SearchHit; layout: ViewMode 
   }
 
   return (
-    <div {...surface} className={cn(base, "flex gap-3.5 p-3.5")}>
-      <ProjectIcon hit={hit} className="h-16 w-16" />
+    <div {...surface} className={cn(base, "flex gap-4 p-4")}>
+      <ProjectIcon hit={hit} className="h-[72px] w-[72px] rounded-xl" />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">

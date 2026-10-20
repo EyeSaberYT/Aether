@@ -260,6 +260,15 @@ pub async fn download_many(
     sink: ProgressSink,
 ) -> Result<DownloadReport> {
     if specs.is_empty() {
+        sink(Progress {
+            stage: stage.into(),
+            label: "Nothing to download".into(),
+            current: 0,
+            total: 0,
+            files_done: 0,
+            files_total: 0,
+            finished: true,
+        });
         return Ok(DownloadReport::default());
     }
 

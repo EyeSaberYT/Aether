@@ -30,7 +30,6 @@ import { cn } from "@/lib/utils";
 
 const PROJECT_TYPES = ["mod", "modpack", "resourcepack", "shader", "datapack"] as const;
 type ProjectType = (typeof PROJECT_TYPES)[number];
-
 const SORTS = [
   { value: "relevance", label: "Relevance" },
   { value: "downloads", label: "Downloads" },
@@ -38,104 +37,59 @@ const SORTS = [
   { value: "newest", label: "Newest" },
   { value: "updated", label: "Recently updated" },
 ];
-
-/**
- * CurseForge's sort enum has no honest "newest created" or "followers" sort,
- * so that catalog offers only the sorts with a real counterpart. Falls back to
- * relevance if the current sort isn't one of them.
- */
 const CURSEFORGE_SORTS = SORTS.filter((option) =>
   ["relevance", "downloads", "updated"].includes(option.value),
 );
-
 type Source = "modrinth" | "curseforge";
-
 const SOURCES: { value: Source; label: string }[] = [
   { value: "modrinth", label: "Modrinth" },
   { value: "curseforge", label: "CurseForge" },
 ];
-
-/** Which catalog the search box is pointed at. */
 const SOURCE_KEY = "aether.discover.source";
-
 const PAGE_SIZE = 20;
-
-/**
- * The loaders worth filtering by. Modrinth's `tag/loader` endpoint also lists
- * long-dead loaders (Rift, Liteloader, modloader) and server software (Paper,
- * Spigot…) that a client launcher can't use, so the filter is pinned to the
- * four loaders Aether can actually install.
- */
 const KNOWN_LOADERS = ["fabric", "quilt", "forge", "neoforge"];
-
-/** How many game versions the filter offers. */
 const MAX_VERSIONS = 50;
 
-/**
- * Modrinth returns every game version it knows about, and the vast majority of
- * those are snapshots (about 750, against ~100 releases). A launch target is
- * almost always a release, so drop the pre-releases and keep the newest
- * releases, which arrive newest-first.
- */
 function releaseVersions(tags: ModrinthTag[]): string[] {
   const releases = tags.filter((tag) => tag.versionType === "release");
-  // If Modrinth ever stops labelling version types, showing everything beats
-  // showing nothing.
-  const usable = releases.length > 0 ? releases : tags;
-  return usable.slice(0, MAX_VERSIONS).map((tag) => tag.name);
+  return (releases.length ? releases : tags).slice(0, MAX_VERSIONS).map((tag) => tag.name);
 }
 
-/** Modrinth search: type tabs, filters and an infinite-ish result grid. */
+/** Unified Modrinth and CurseForge discovery. Search, filtering and paging remain backed by the current API. */
 export function Discover() {
   const [projectType, setProjectType] = useState<ProjectType>("mod");
   const [query, setQuery] = useState("");
   const [gameVersion, setGameVersion] = useState("any");
   const [loader, setLoader] = useState("any");
   const [sort, setSort] = useState("relevance");
-
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [gameVersions, setGameVersions] = useState<string[]>([]);
-
   const [storedView, setStoredView] = usePersistentState<ViewMode>(VIEW_KEY, DEFAULT_VIEW);
-  // Storage is user-writable, so narrow it before it reaches a branch.
   const view = asViewMode(storedView);
-
   const [storedSource, setStoredSource] = usePersistentState<Source>(SOURCE_KEY, "modrinth");
   const source: Source = storedSource === "curseforge" ? "curseforge" : "modrinth";
   const sorts = source === "curseforge" ? CURSEFORGE_SORTS : SORTS;
-
-  /** Switch catalog, dropping a sort that doesn't exist on the new one. */
-  function pickSource(next: Source) {
-    setStoredSource(next);
-    const allowed = next === "curseforge" ? CURSEFORGE_SORTS : SORTS;
-    if (!allowed.some((option) => option.value === sort)) setSort("relevance");
-  }
-
-  // Whether the loader filter is meaningful for the current project type.
   const loaderApplies =
     projectType === "mod" || projectType === "modpack" || projectType === "datapack";
-
-  // Debounced search term so typing doesn't hammer the API.
   const debounced = useDebounced(query, 350);
   const requestId = useRef(0);
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Load the game-version list once. It only fills a dropdown, so a failure
-  // degrades the filter rather than blocking the page. The loader options are
-  // a fixed list (see KNOWN_LOADERS), so nothing else needs fetching.
+  function pickSource(next: Source) {
+    setStoredSource(next);
+    if (!(next === "curseforge" ? CURSEFORGE_SORTS : SORTS).some((item) => item.value === sort)) {
+      setSort("relevance");
+    }
+  }
+
   useEffect(() => {
-    void (async () => {
-      try {
-        setGameVersions(releaseVersions(await modrinth.tags("game_version")));
-      } catch (error) {
-        toast.error("Couldn't load search filters", {
-          description: error instanceof Error ? error.message : String(error),
-        });
-      }
-    })();
+    void modrinth
+      .tags("game_version")
+      .then((tags) => setGameVersions(releaseVersions(tags)))
+      .catch((error) => toast.error("Couldn't load game versions", { description: String(error) }));
   }, []);
 
   const filters = useMemo<SearchFilters>(
@@ -155,21 +109,19 @@ export function Discover() {
       const id = ++requestId.current;
       setLoading(true);
       try {
-        const response: SearchResponse = await modrinth.search(
+        const result: SearchResponse = await modrinth.search(
           filters,
           PAGE_SIZE,
           (target - 1) * PAGE_SIZE,
           source,
         );
-        // A newer request superseded this one while it was in flight.
         if (id !== requestId.current) return;
-        setHits(response.hits);
-        setTotal(response.totalHits);
+        setHits(result.hits);
+        setTotal(result.totalHits);
         setPage(target);
       } catch (error) {
-        if (id === requestId.current) {
+        if (id === requestId.current)
           toast.error(error instanceof Error ? error.message : String(error));
-        }
       } finally {
         if (id === requestId.current) setLoading(false);
       }
@@ -177,61 +129,39 @@ export function Discover() {
     [filters, source],
   );
 
-  // Re-run whenever the filters or the catalog change (always from page one).
   useEffect(() => {
     void runSearch(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, source]);
+  }, [runSearch]);
 
-  // Jump to a page and return to the top of the results, the way every
-  // paginated site behaves — without this, clicking "Next" on a long page
-  // leaves you staring at cards that just changed underneath you.
   const goToPage = useCallback(
     (target: number) => {
-      void runSearch(target).then(() => {
-        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+      void runSearch(target).then(() =>
+        resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      );
     },
     [runSearch],
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-8 py-7">
+    <div className="screen-page">
       <PageHeader
         title="Discover"
-        description="Browse mods, modpacks, resource packs, shaders and datapacks from Modrinth and CurseForge."
-        actions={<ViewToggle view={view} onChange={setStoredView} label="Discover layout" />}
+        description="Find the next thing to add to your game."
+        actions={<ViewToggle view={view} onChange={setStoredView} label="Result layout" />}
       />
 
-      {/* Type tabs + catalog switch */}
-      <div className="mt-6 rounded-xl border border-border/75 bg-card p-3">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {PROJECT_TYPES.map((type) => (
-            <button
-              key={type}
-              onClick={() => setProjectType(type)}
-              className={cn(
-                "rounded-md border px-3 py-1.5 text-[13px] font-medium transition-colors",
-                projectType === type
-                  ? "border-primary/50 bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-            >
-              {projectTypeLabel(type)}s
-            </button>
-          ))}
-
-          <div className="ml-auto flex rounded-md border bg-background p-0.5">
+      <section className="discover-search mt-7 rounded-2xl border border-border/80 p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="eyebrow text-primary">Community content</p>
+            <h2 className="mt-1 text-lg font-bold">Explore projects</h2>
+          </div>
+          <div className="source-switch" role="group" aria-label="Content source">
             {SOURCES.map((option) => (
               <button
                 key={option.value}
                 onClick={() => pickSource(option.value)}
-                className={cn(
-                  "rounded px-3 py-1 text-xs font-medium transition-colors",
-                  source === option.value
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
+                className={cn("source-option", source === option.value && "source-option-active")}
               >
                 {option.label}
               </button>
@@ -239,39 +169,73 @@ export function Discover() {
           </div>
         </div>
 
-        {/* Search + filters */}
-        <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="mt-5 flex flex-wrap gap-2">
+          {PROJECT_TYPES.map((type) => (
+            <button
+              key={type}
+              onClick={() => setProjectType(type)}
+              className={cn("type-chip", projectType === type && "type-chip-active")}
+            >
+              {projectTypeLabel(type)}s
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={`Search ${projectTypeLabel(projectType).toLowerCase()}s…`}
-              className="bg-background pl-9"
+              placeholder={`Search ${projectTypeLabel(projectType).toLowerCase()}s`}
+              className="h-11 border-border/80 bg-background pl-11"
             />
           </div>
+          <Select value={sort} onValueChange={setSort}>
+            <SelectTrigger className="h-11 w-full bg-background sm:w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {sorts.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </section>
 
-          <div className="flex items-center gap-3">
-            <SlidersHorizontal className="hidden h-4 w-4 text-muted-foreground lg:block" />
+      <div className="mt-6 grid items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="filter-panel rounded-2xl border border-border/80 p-4">
+          <div className="mb-4 flex items-center gap-2 text-sm font-semibold">
+            <SlidersHorizontal className="h-4 w-4 text-primary" /> Filters
+          </div>
+          <label className="filter-label" htmlFor="discover-version">
+            Game version
+          </label>
+          <Select value={gameVersion} onValueChange={setGameVersion}>
+            <SelectTrigger id="discover-version" className="mt-1.5 w-full bg-background">
+              <SelectValue placeholder="Any version" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Any version</SelectItem>
+              {gameVersions.map((version) => (
+                <SelectItem key={version} value={version}>
+                  {version}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            <Select value={gameVersion} onValueChange={setGameVersion}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Version" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="any">Any version</SelectItem>
-                {gameVersions.map((version) => (
-                  <SelectItem key={version} value={version}>
-                    {version}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {loaderApplies && (
+          {loaderApplies && (
+            <>
+              <label className="filter-label mt-4" htmlFor="discover-loader">
+                Mod loader
+              </label>
               <Select value={loader} onValueChange={setLoader}>
-                <SelectTrigger className="w-36">
-                  <SelectValue placeholder="Loader" />
+                <SelectTrigger id="discover-loader" className="mt-1.5 w-full bg-background">
+                  <SelectValue placeholder="Any loader" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="any">Any loader</SelectItem>
@@ -282,71 +246,64 @@ export function Discover() {
                   ))}
                 </SelectContent>
               </Select>
+            </>
+          )}
+          <p className="mt-4 border-t border-border/70 pt-4 text-xs leading-relaxed text-muted-foreground">
+            Results are from {source === "modrinth" ? "Modrinth" : "CurseForge"}. Choose a version
+            or loader to narrow them down.
+          </p>
+        </aside>
+
+        <section ref={resultsRef} className="min-w-0 scroll-mt-6">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold">
+              {loading && hits.length === 0
+                ? "Finding projects…"
+                : `${total.toLocaleString()} projects`}
+            </p>
+            {loading && hits.length > 0 && (
+              <span className="text-xs text-muted-foreground">Updating results…</span>
             )}
-
-            <Select value={sort} onValueChange={setSort}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {sorts.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
-        </div>
-      </div>
-
-      {/* Results */}
-      <div ref={resultsRef} className="mt-6 scroll-mt-8">
-        {loading && hits.length === 0 ? (
-          <div className={view === "grid" ? CARD_GRID : "space-y-3"}>
-            {Array.from({ length: 6 }).map((_, index) => (
-              <ProjectCardSkeleton key={index} layout={view} />
-            ))}
-          </div>
-        ) : hits.length === 0 ? (
-          <EmptyState
-            icon={Compass}
-            title="No projects found"
-            description="Try changing your search or filters."
-          />
-        ) : (
-          <>
-            <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
-              <span>
-                {total.toLocaleString()} {total === 1 ? "project" : "projects"}
-              </span>
-              {loading && <span>Refreshing results…</span>}
-            </div>
+          {loading && hits.length === 0 ? (
             <div className={view === "grid" ? CARD_GRID : "space-y-3"}>
-              {hits.map((hit) => (
-                <ProjectCard
-                  key={`${hit.projectId}-${hit.latestVersion ?? ""}`}
-                  hit={hit}
-                  layout={view}
-                />
+              {Array.from({ length: 6 }).map((_, index) => (
+                <ProjectCardSkeleton key={index} layout={view} />
               ))}
             </div>
-            <Pagination
-              page={page}
-              pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
-              total={total}
-              pageSize={PAGE_SIZE}
-              loading={loading}
-              onChange={goToPage}
+          ) : hits.length === 0 ? (
+            <EmptyState
+              icon={Compass}
+              title="Nothing found"
+              description="Try another search or loosen your filters."
             />
-          </>
-        )}
+          ) : (
+            <>
+              <div className={view === "grid" ? CARD_GRID : "space-y-3"}>
+                {hits.map((hit) => (
+                  <ProjectCard
+                    key={`${hit.projectId}-${hit.latestVersion ?? ""}`}
+                    hit={hit}
+                    layout={view}
+                  />
+                ))}
+              </div>
+              <Pagination
+                page={page}
+                pageCount={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+                total={total}
+                pageSize={PAGE_SIZE}
+                loading={loading}
+                onChange={goToPage}
+              />
+            </>
+          )}
+        </section>
       </div>
     </div>
   );
 }
 
-/** Returns `value` after it has stayed unchanged for `delay` ms. */
 function useDebounced<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {

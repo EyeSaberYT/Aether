@@ -14,20 +14,25 @@ export function ProgressFooter() {
 
   if (!progress) return null;
 
-  const hasCounts = progress.total > 0;
-  const percent = hasCounts
+  const hasByteCounts = progress.total > 0;
+  const hasFileCounts = (progress.filesTotal ?? 0) > 0;
+  const percent = hasByteCounts
     ? Math.min(100, Math.round((progress.current / progress.total) * 100))
-    : progress.finished
-      ? 100
-      : 0;
+    : hasFileCounts
+      ? Math.min(100, Math.round(((progress.filesDone ?? 0) / (progress.filesTotal ?? 1)) * 100))
+      : progress.finished
+        ? 100
+        : 0;
 
   const done = progress.finished;
+  const indeterminate = !(hasByteCounts || hasFileCounts) && !done;
+  const showPercent = (hasByteCounts || hasFileCounts) && !done;
 
   return (
     <div
       className={cn(
-        "flex items-center gap-3 border-t px-4 py-2.5 text-sm backdrop-blur-sm",
-        done ? "bg-primary/5" : "bg-card/85",
+        "mx-3 mb-3 flex items-center gap-3 rounded-xl border px-4 py-2.5 text-sm shadow-lg backdrop-blur-sm",
+        done ? "border-primary/20 bg-primary/[0.06]" : "border-border/80 bg-card/95",
       )}
     >
       {done ? (
@@ -42,13 +47,13 @@ export function ProgressFooter() {
         <div className="flex items-center justify-between gap-3">
           <p className="truncate font-medium">{progress.label}</p>
           <span className="shrink-0 text-xs text-muted-foreground">
-            {hasCounts ? `${percent}%` : progress.stage}
-            {progress.filesTotal > 1 && !done
-              ? ` · ${progress.filesDone}/${progress.filesTotal} files`
+            {showPercent ? `${percent}%` : done ? "Done" : ""}
+            {(progress.filesTotal ?? 0) > 1 && !done
+              ? ` · ${progress.filesDone ?? 0}/${progress.filesTotal} files`
               : ""}
           </span>
         </div>
-        {!done && <Progress className="mt-1.5 h-1.5" value={percent} />}
+        {!done && <Progress className="mt-1.5 h-1.5" value={percent} indeterminate={indeterminate} />}
       </div>
 
       {done && (

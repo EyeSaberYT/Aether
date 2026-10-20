@@ -8,25 +8,26 @@ const NAV_ITEMS = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/library", label: "Library", icon: LibraryBig, end: false },
   { to: "/discover", label: "Discover", icon: Compass, end: false },
-  { to: "/settings", label: "Settings", icon: Settings, end: false },
 ];
 
-/** Fixed navigation rail with the brand mark and the account switcher. */
-export function Sidebar() {
+/** Primary launcher navigation and active-player control. */
+export function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
   return (
-    <aside className="relative flex h-full w-[220px] shrink-0 flex-col border-r bg-[#17191c]">
-      <div className="flex items-center gap-3 px-4 py-5">
-        <BrandMark className="h-8 w-8 rounded-lg" />
-        <div>
-          <p className="text-sm font-semibold leading-none tracking-tight">Aether</p>
-          <p className="mt-1 text-[10px] text-muted-foreground">MINECRAFT LAUNCHER</p>
+    <aside className="side-rail flex h-full w-[232px] shrink-0 flex-col border-r border-border/70 px-3">
+      <div className="flex items-center gap-3 px-2 py-5">
+        <BrandMark className="h-9 w-9 rounded-xl" />
+        <div className="min-w-0">
+          <p className="text-sm font-bold leading-none tracking-tight">Aether</p>
+          <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Launcher
+          </p>
         </div>
       </div>
 
-      <div className="px-4 pb-2 pt-5 text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground/70">
-        Workspace
+      <div className="px-3 pb-2 pt-7 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/65">
+        Play
       </div>
-      <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-1 px-2.5">
+      <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-1 px-1">
         {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
@@ -34,10 +35,10 @@ export function Sidebar() {
             end={end}
             className={({ isActive }) =>
               cn(
-                "group relative flex items-center gap-3 rounded-md px-3 py-[9px] text-[13px] font-medium transition-colors duration-150",
+                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-colors duration-150",
                 isActive
-                  ? "bg-primary/10 text-primary before:absolute before:bottom-2 before:left-0 before:top-2 before:w-[3px] before:rounded-full before:bg-primary"
-                  : "text-muted-foreground hover:bg-white/[0.045] hover:text-foreground",
+                  ? "nav-active bg-primary/[0.11] text-primary"
+                  : "text-muted-foreground hover:bg-accent/70 hover:text-foreground",
               )
             }
           >
@@ -47,7 +48,16 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-white/[0.06] p-2.5">
+      <button
+        type="button"
+        onClick={onOpenSettings}
+        className="group mx-1 mb-3 flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground"
+      >
+        <Settings className="h-[17px] w-[17px] shrink-0" />
+        Settings
+      </button>
+
+      <div className="border-t border-border/70 py-3">
         <AccountMenu />
       </div>
     </aside>
